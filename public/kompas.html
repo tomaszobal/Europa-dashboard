@@ -189,29 +189,56 @@
       /* ------- mapa ------- */
       .mapwrap {
         position: relative; border-radius: 16px; border: 1px solid var(--line); overflow: hidden;
-        background: #0a1a2e; box-shadow: 0 12px 32px rgba(3, 10, 20, 0.35);
+        background: #d7edf9; box-shadow: 0 12px 32px rgba(3, 10, 20, 0.35);
       }
-      .map-svg { display: block; width: 100%; height: auto; }
+      .map-svg { display: block; width: 100%; height: auto; --k: 1; touch-action: none; cursor: grab; }
+      .map-svg.dragging { cursor: grabbing; }
       #mapwrap.drop-hot { outline: 3px dashed rgba(246, 185, 75, 0.65); outline-offset: -7px; }
-      .sea-outline { stroke: #23466f; stroke-width: 1.1; }
-      .graticule { fill: none; stroke: #1d3a5f; stroke-width: 0.6; stroke-dasharray: 2 5; opacity: 0.8; }
-      .ctx { fill: #14283f; stroke: #0a1a2e; stroke-width: 0.5; }
-      .eu { stroke: #0a1a2e; stroke-width: 0.8; cursor: pointer; transition: filter 0.18s, fill 0.4s; }
-      .eu-new { fill: #2b4b72; }
-      .eu-try { fill: #4b7a9e; }
-      .eu-learned { fill: #2f9e77; }
-      .eu-q { fill: #2e527d; }
-      .eu:hover { filter: brightness(1.32) saturate(1.05); }
-      .eu-sel { stroke: var(--amber) !important; stroke-width: 2.2 !important; filter: drop-shadow(0 0 7px rgba(246, 185, 75, 0.55)); }
-      .eu-dot { stroke: #0a1626; stroke-width: 1; }
-      .mark-ring { fill: transparent; stroke: var(--amber); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.85; }
-      .cap circle.capdot { fill: var(--amber); stroke: #0a1626; stroke-width: 1.2; }
+      .sea-outline { stroke: #a7c9dd; stroke-width: 1.1; }
+      .graticule { fill: none; stroke: #bcd8e8; stroke-width: calc(0.7 / var(--k) * 1px); stroke-dasharray: 2 6; opacity: 0.9; }
+      .ctx { fill: #e6dfd0; stroke: #c9c0ae; stroke-width: calc(0.6 / var(--k) * 1px); }
+      .eu {
+        fill: #faf4e3; stroke: #83796a; stroke-width: calc(1.1 / var(--k) * 1px); stroke-linejoin: round;
+        cursor: pointer; transition: fill 0.15s;
+      }
+      .eu-new { fill: #faf4e3; }
+      .eu-try { fill: #ffe3ae; }
+      .eu-learned { fill: #cdeed9; }
+      .eu-q { fill: #faf4e3; }
+      .eu:hover { fill: #ffd48c; }
+      .eu-sel { fill: #ffb454 !important; stroke: #7a4b00 !important; stroke-width: calc(1.8 / var(--k) * 1px) !important; }
+      .eu-dot { stroke: #7a4b00; stroke-width: calc(1 / var(--k) * 1px); }
+      .mark-ring { fill: none; stroke: #d97706; stroke-width: calc(2 / var(--k) * 1px); stroke-dasharray: 3 4; opacity: 0.9; }
+      .cap circle.capdot { fill: #b2262f; stroke: #fff; stroke-width: calc(0.9 / var(--k) * 1px); }
+      .cap:hover circle.capdot { fill: #ff5a45; }
       .cap .hit { fill: transparent; cursor: pointer; }
       .caps-off .cap { display: none; }
+      .mname, .cname {
+        pointer-events: none; text-anchor: middle; paint-order: stroke; stroke-linejoin: round;
+        font-family: "Manrope", sans-serif; font-weight: 700;
+      }
+      .mname { fill: #1f2c36; stroke: rgba(250, 244, 227, 0.92); stroke-width: calc(3 / var(--k) * 1px); font-size: calc(11.5 / var(--k) * 1px); }
+      .cname { fill: #8a1b23; stroke: rgba(250, 244, 227, 0.92); stroke-width: calc(2.6 / var(--k) * 1px); font-size: calc(9.5 / var(--k) * 1px); }
+      .names-off .mname { display: none; }
+      .capnames-off .cname { display: none; }
+      #zoomBtns { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 6; }
+      #zoomBtns button {
+        width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: #fff;
+        font-size: 18px; font-weight: 700; color: var(--ink); cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+        display: grid; place-items: center; transition: background 0.15s;
+      }
+      #zoomBtns button:hover { background: #f0f6fa; }
+      #hintBar {
+        position: absolute; left: 50%; transform: translateX(-50%); bottom: 12px; z-index: 5;
+        background: rgba(255, 255, 255, 0.94); border: 1px solid #d3dfe8; border-radius: 999px;
+        padding: 6px 16px; font-size: 12.5px; color: #5c6b78; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        max-width: 72%; text-align: center; pointer-events: none;
+      }
+      @media (max-width: 640px) { #hintBar { font-size: 11px; padding: 5px 12px; } }
       .map-tip {
-        position: absolute; z-index: 30; pointer-events: none; background: rgba(12, 27, 48, 0.96);
-        border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
-        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); max-width: 230px; color: var(--ink);
+        position: absolute; z-index: 30; pointer-events: none; background: rgba(31, 44, 54, 0.95);
+        border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 8px 12px;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); max-width: 240px; color: #fff;
       }
       .map-loading, .map-error {
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -223,7 +250,7 @@
       }
       .fx-good { animation: fxGood 1s ease both; }
       .fx-bad { animation: fxBad 1s ease both; }
-      .fx-reveal { fill: var(--green) !important; animation: pulseR 1.1s ease-in-out infinite; }
+      .fx-reveal { fill: #ffd166 !important; stroke: #7a4b00 !important; animation: pulseR 1.1s ease-in-out infinite; }
       .compass-spin { animation: spin 80s linear infinite; transform-box: fill-box; transform-origin: center; }
 
       /* ------- fiszki ------- */
@@ -261,8 +288,8 @@
       .animate-fadeIn { animation: fadeIn 0.3s ease both; }
       @keyframes toastIn { from { opacity: 0; transform: translateX(24px); } }
       @keyframes toastOut { to { opacity: 0; transform: translateX(24px); } }
-      @keyframes fxGood { 0%, 55% { fill: #3ecf8e; } }
-      @keyframes fxBad { 0%, 55% { fill: #f26d6d; } }
+      @keyframes fxGood { 0%, 55% { fill: #4caf78; } }
+      @keyframes fxBad { 0%, 55% { fill: #e2685f; } }
       @keyframes pulseR { 50% { filter: brightness(1.5); } }
       @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 
@@ -785,100 +812,260 @@
         if (view === "mapa") renderExplore();
       }
 
+      /* -------- ciekawostki o państwach (konstrukcja z pliku "Mapa Europy") -------- */
+      const FACTS = {
+        "008": "Albania ma ponad 700 tysięcy betonowych bunkrów — budowano je przez kilkadziesiąt lat.",
+        "020": "Andora to jedno z najmniejszych państw świata — cała mieści się w dolinie Pirenejów.",
+        "040": "W Wiedniu działa Prater — jedno z najstarszych wesołych miasteczek świata (od 1766 r.).",
+        "112": "Mińsk niemal w całości odbudowano po II wojnie światowej w stylu socrealistycznym.",
+        "056": "W Brukseli działają główne instytucje Unii Europejskiej, więc bywa nazywana stolicą Europy.",
+        "070": "Sarajewo było gospodarzem zimowych igrzysk olimpijskich w 1984 roku.",
+        "100": "Bułgaria jako jedna z pierwszych w Europie zaczęła używać pisma cyrylickiego.",
+        "191": "Legenda mówi, że krawat pochodzi z Chorwacji — od chust noszonych przez chorwackich żołnierzy.",
+        "196": "Nikozja to jedyna stolica w Europie podzielona między dwa państwa.",
+        "203": "Praski most Karola ma ponad 600 lat i zdobi go 30 rzeźb.",
+        "208": "Kopenhaga często wygrywa rankingi najbardziej rowerowych miast świata.",
+        "233": "Estonia to pionier e-państwa: niemal wszystkie sprawy urzędowe załatwisz tam przez internet.",
+        "246": "W Finlandii jest ponad 180 tysięcy jezior, a saun niemal tyle co samochodów.",
+        "250": "Paryski Luwr to najczęściej odwiedzane muzeum świata — czeka w nim Mona Lisa.",
+        "300": "Ateny uważa się za kolebkę demokracji i igrzysk olimpijskich.",
+        "724": "Madryt to najwyżej położona stolica Unii Europejskiej — ponad 650 m n.p.m.",
+        "528": "Spora część Holandii leży poniżej poziomu morza — chronią ją tamy i wiatraki.",
+        "372": "Dublin 17 marca świętuje Dzień św. Patryka — na zielono ubiera się wtedy całe miasto.",
+        "352": "Reykjavík to najbardziej wysunięta na północ stolica świata.",
+        "438": "Liechtenstein nie ma własnej armii ani lotniska — i wcale ich nie potrzebuje.",
+        "440": "Uniwersytet Wileński działa od 1579 roku — to jedna z najstarszych uczelni Europy Wschodniej.",
+        "442": "Luksemburg jest stolicą państwa o tej samej nazwie — jednego z najbogatszych na świecie.",
+        "428": "Ryga słynie z secesyjnych kamienic — ma ich najwięcej w Europie.",
+        "470": "Valletta to jedna z najmniejszych stolic Europy — mieszka w niej ok. 5 tysięcy osób.",
+        "498": "Kiszyniów leży wśród winnic — Mołdawia ma jedne z największych piwnic winnych świata.",
+        "492": "Monako jest gęściej zaludnione niż jakiekolwiek inne państwo świata.",
+        "276": "Berlin przez 28 lat dzielił mur — dziś przypomina o nim galeria East Side.",
+        "578": "Oslo leży nad fiordem, a na nartach można tam jeździć niemal przez cały rok.",
+        "616": "Warszawskie Stare Miasto odbudowano po wojnie tak wiernie, że trafiło na listę UNESCO.",
+        "620": "Lizbona leży na siedmiu wzgórzach i słynie z żółtych tramwajów.",
+        "643": "Rosja to największe państwo świata — rozciąga się przez 11 stref czasowych.",
+        "642": "W rumuńskim Siedmiogrodzie stoi zamek Bran, zwany zamkiem Drakuli.",
+        "674": "San Marino to najstarsza republika świata — istnieje nieprzerwanie od 301 roku.",
+        "807": "Skopje zdobi ponad 200 pomników — miasto chciało przypomnieć o antycznych korzeniach.",
+        "703": "Bratysława graniczy z dwiema stolicami — Wiedniem i Budapesztem. To ewenement w Europie.",
+        "705": "Słowenia ma wszystko naraz: Alpy, winnice i 46 km wybrzeża Adriatyku.",
+        "756": "Berno jest stolicą, choć większy od niego jest Zurych — w Szwajcarii to możliwe.",
+        "752": "W Sztokholmie wręcza się Nagrody Nobla — poza Pokojową, którą przyznaje Norwegia.",
+        "792": "Ankara została stolicą Turcji dopiero w 1923 roku — wcześniej był nią Stambuł.",
+        "804": "Ukraina to największe państwo leżące w całości w Europie.",
+        "336": "Watykan to najmniejsze państwo świata — mieści się w murach wokół bazyliki św. Piotra.",
+        "826": "Big Ben to tak naprawdę dzwon — wieża zegarowa nazywa się Elizabeth Tower.",
+        "348": "Budapesztański parlament nad Dunajem ma 691 pomieszczeń i własną straż honorową.",
+        "380": "Rzym to jedyne miasto, w którego granicach leży inne państwo — Watykan.",
+        "688": "Belgrad był w historii burzony i odbudowywany kilkadziesiąt razy.",
+        "499": "Podgorica to stolica Czarnogóry, która ogłosiła niepodległość w 2006 roku.",
+        "-99": "Kosowo ogłosiło niepodległość w 2008 roku — to najmłodsze państwo Europy."
+      };
+
+      /* -------- silnik przybliżania i etykiet (konstrukcja z pliku "Mapa Europy") -------- */
+      const cArea = {};        // id -> powierzchnia konturu w px² (przy k = 1)
+      const labelNodes = {};   // id -> <text> z nazwą państwa
+      const capLabelNodes = {}; // id -> <text> z nazwą stolicy
+      const zm = { k: 1, tx: 0, ty: 0 };
+      let zoomG = null;
+      let justDragged = false;
+
+      function mainCentroid(f, path) {
+        const g = f.geometry;
+        if (!g) return null;
+        let c = null;
+        if (g.type === "Polygon") c = path.centroid(f);
+        else if (g.type === "MultiPolygon") {
+          let bestA = -1;
+          g.coordinates.forEach((poly) => {
+            const sub = { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: poly } };
+            const a = Math.abs(path.area(sub));
+            if (a > bestA) { bestA = a; c = path.centroid(sub); }
+          });
+        }
+        if (c && isFinite(c[0]) && isFinite(c[1]) && c[0] > -60 && c[0] < W + 60 && c[1] > -60 && c[1] < H + 60) return c;
+        return null;
+      }
+
+      function applyZoom() {
+        if (!zoomG || !mapSvg) return;
+        zoomG.setAttribute("transform", "translate(" + zm.tx + "," + zm.ty + ") scale(" + zm.k + ")");
+        mapSvg.style.setProperty("--k", String(zm.k));
+        // w quizie na mapie etykiety byłyby podpowiedzią — wyłączamy je
+        const inQuiz = view === "mapquiz" && mq.phase === "play";
+        const k2 = zm.k * zm.k;
+        for (const id in labelNodes) {
+          const a = (cArea[id] || 0) * k2;
+          const show = !inQuiz && (ex.showNames ? (a >= 550 || zm.k >= 1.9) : (a >= 1500 || zm.k >= 2.8));
+          labelNodes[id].style.display = show ? "" : "none";
+        }
+        for (const id in capLabelNodes) {
+          capLabelNodes[id].style.display = (!inQuiz && (ex.showCapNames || zm.k >= 2.4)) ? "" : "none";
+        }
+      }
+
+      function clientToView(e) {
+        const r = mapSvg.getBoundingClientRect();
+        return [(e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H];
+      }
+
+      function zoomAt(px, py, f) {
+        const k2 = Math.max(1, Math.min(9, zm.k * f));
+        if (k2 === zm.k) return;
+        zm.tx = px - (px - zm.tx) * (k2 / zm.k);
+        zm.ty = py - (py - zm.ty) * (k2 / zm.k);
+        zm.k = k2;
+        if (zm.k <= 1.001) { zm.k = 1; zm.tx = 0; zm.ty = 0; }
+        applyZoom();
+      }
+
+      function bindZoomAndPan() {
+        mapSvg.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          const p = clientToView(e);
+          zoomAt(p[0], p[1], e.deltaY < 0 ? 1.3 : 1 / 1.3);
+        }, { passive: false });
+        mapSvg.addEventListener("dblclick", (e) => {
+          e.preventDefault();
+          const p = clientToView(e);
+          zoomAt(p[0], p[1], 1.7);
+        });
+        let pan = null;
+        mapSvg.addEventListener("pointerdown", (e) => {
+          if (e.pointerType === "mouse" && e.button !== 0) return;
+          pan = { x: e.clientX, y: e.clientY, tx: zm.tx, ty: zm.ty, moved: false };
+          try { mapSvg.setPointerCapture(e.pointerId); } catch (err) {}
+          mapSvg.classList.add("dragging");
+        });
+        mapSvg.addEventListener("pointermove", (e) => {
+          if (!pan) return;
+          const r = mapSvg.getBoundingClientRect();
+          if (Math.abs(e.clientX - pan.x) + Math.abs(e.clientY - pan.y) > 5) pan.moved = true;
+          zm.tx = pan.tx + (e.clientX - pan.x) / r.width * W;
+          zm.ty = pan.ty + (e.clientY - pan.y) / r.height * H;
+          applyZoom();
+        });
+        const endPan = () => {
+          if (!pan) return;
+          justDragged = pan.moved;
+          pan = null;
+          mapSvg.classList.remove("dragging");
+        };
+        mapSvg.addEventListener("pointerup", endPan);
+        mapSvg.addEventListener("pointercancel", endPan);
+      }
+
       function buildMap(featsRaw) {
         const feats = featsRaw.map(normalizeFeature).filter((f) => f && f.geometry);
         const proj = makeProjection();
         const path = d3.geoPath(proj);
 
         mapSvg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, class: "map-svg", role: "img", "aria-label": "Mapa Europy" });
-        mapSvg.style.background = "radial-gradient(900px 620px at 28% 18%, #0e2340, #0a1a2e 62%)";
+        mapSvg.style.background = "radial-gradient(900px 620px at 30% 16%, #e6f3fc, #d7edf9 64%)";
 
-        const defs = svgEl("defs", {}, mapSvg);
-        const filt = svgEl("filter", { id: "softGlow", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
-        svgEl("feDropShadow", { dx: 0, dy: 0, stdDeviation: 7, "flood-color": "#f6b94b", "flood-opacity": 0.45 }, filt);
+        svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#d7edf9" }, mapSvg);
 
-        svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#0a1a2e" }, mapSvg);
-        svgEl("rect", { x: 2.5, y: 2.5, width: W - 5, height: H - 5, fill: "none", rx: 12, class: "sea-outline" }, mapSvg);
+        zoomG = svgEl("g", { id: "zoomG" }, mapSvg);
 
         const grat = d3.geoGraticule10 ? d3.geoGraticule10() : d3.geoGraticule().step([10, 10])();
-        svgEl("path", { d: path(grat), class: "graticule" }, mapSvg);
+        svgEl("path", { d: path(grat), class: "graticule" }, zoomG);
 
         // kontekst (państwa spoza listy, np. fragmenty Afryki i Azji)
-        const gCtx = svgEl("g", {}, mapSvg);
+        const gCtx = svgEl("g", {}, zoomG);
         feats.forEach((f) => {
           if (INTERACTIVE.has(f.id)) return;
           const b = d3.geoBounds(f);
           if (b[0][0] > 50 || b[1][0] < -28 || b[0][1] > 73 || b[1][1] < 32) return;
           const d = path(f);
-          if (d) {
-            const p = svgEl("path", { d: d, class: "ctx", "data-ctx-name": (f.properties && f.properties.name) || "" }, gCtx);
-            p.style.pointerEvents = "none";
-          }
+          if (d) svgEl("path", { d: d, class: "ctx" }, gCtx).style.pointerEvents = "none";
         });
 
+        svgEl("rect", { x: 2.5, y: 2.5, width: W - 5, height: H - 5, fill: "none", rx: 12, class: "sea-outline" }, mapSvg);
+
         // państwa interaktywne
-        const gEu = svgEl("g", {}, mapSvg);
-        const inter = feats.filter((f) => INTERACTIVE.has(f.id));
-        inter.forEach((f) => {
+        const gEu = svgEl("g", {}, zoomG);
+        feats.filter((f) => INTERACTIVE.has(f.id)).forEach((f) => {
           const d = path(f);
           if (!d) return;
           const p = svgEl("path", { d: d, "data-id": f.id, class: "eu eu-new" }, gEu);
           mapNodes[f.id] = p;
           if (f.id === "643") p.style.pointerEvents = "none"; // Rosja: reakcja tylko w oknie Europy
-          const c = path.centroid(f);
-          if (c && isFinite(c[0]) && isFinite(c[1]) && c[0] > -50 && c[0] < W + 50 && c[1] > -50 && c[1] < H + 50) {
-            capPos[f.id] = c;
-          }
+          cArea[f.id] = Math.abs(path.area(f));
+          const c = mainCentroid(f, path);
+          if (c) capPos[f.id] = c;
         });
 
-        // kropki mikropaństw
-        const gDots = svgEl("g", {}, mapSvg);
+        // kropki mikropaństw (za małe na kontur)
+        const gDots = svgEl("g", {}, zoomG);
         COUNTRIES.forEach((c) => {
           const pos = capPos[c.id];
           if (!pos || mapNodes[c.id]) return;
           const dot = svgEl("circle", { cx: pos[0], cy: pos[1], r: 4, "data-id": c.id, class: "eu eu-dot eu-new" }, gDots);
           mapNodes[c.id] = dot;
+          cArea[c.id] = 22;
           const ring = svgEl("circle", { cx: pos[0], cy: pos[1], r: 8.5, class: "mark-ring" }, gDots);
           ring.style.pointerEvents = "none";
         });
 
-        // stolice
-        capsG = svgEl("g", {}, mapSvg);
+        // nazwy państw (widoczne zależnie od przybliżenia)
+        const gNames = svgEl("g", {}, zoomG);
+        COUNTRIES.forEach((c) => {
+          const pos = capPos[c.id];
+          if (!pos || !mapNodes[c.id]) return;
+          const t = svgEl("text", { x: pos[0], y: pos[1] + 4, class: "mname" }, gNames);
+          t.textContent = c.name;
+          t.style.pointerEvents = "none";
+          labelNodes[c.id] = t;
+        });
+
+        // stolice: kropka + nazwa
+        capsG = svgEl("g", {}, zoomG);
         COUNTRIES.forEach((c) => {
           const pos = capPos[c.id];
           if (!pos) return;
           const g = svgEl("g", { class: "cap", "data-id": c.id }, capsG);
-          svgEl("circle", { cx: pos[0], cy: pos[1], r: 3.2, class: "capdot" }, g);
-          svgEl("circle", { cx: pos[0], cy: pos[1], r: 9, class: "hit" }, g);
+          svgEl("circle", { cx: pos[0], cy: pos[1], r: 3.4, class: "capdot" }, g);
+          svgEl("circle", { cx: pos[0], cy: pos[1], r: 10, class: "hit" }, g);
+          const nearRight = pos[0] > W - 150;
+          const t = svgEl("text", {
+            x: pos[0] + (nearRight ? -7 : 7), y: pos[1] - 6,
+            class: "cname", "text-anchor": nearRight ? "end" : "start"
+          }, g);
+          t.textContent = c.capital;
+          capLabelNodes[c.id] = t;
         });
 
-        // pierścień zaznaczenia
-        markRing = svgEl("circle", { r: 11, class: "mark-ring", style: "display:none" }, mapSvg);
+        // pierścień zaznaczenia (w grupie zoomu, żeby podążał za przybliżeniem)
+        markRing = svgEl("circle", { r: 11, class: "mark-ring", style: "display:none" }, zoomG);
         markRing.style.pointerEvents = "none";
 
         // kompas
-        const gc = svgEl("g", { transform: "translate(852,64)", opacity: 0.75 }, mapSvg);
-        svgEl("circle", { r: 24, fill: "none", stroke: "#23466f", "stroke-width": 1 }, gc);
-        svgEl("circle", { r: 17, fill: "none", stroke: "#23466f", "stroke-width": 0.6, "stroke-dasharray": "2 4" }, gc);
+        const gc = svgEl("g", { transform: "translate(852,64)", opacity: 0.8 }, mapSvg);
+        svgEl("circle", { r: 24, fill: "rgba(255,255,255,.75)", stroke: "#a7c9dd", "stroke-width": 1 }, gc);
+        svgEl("circle", { r: 17, fill: "none", stroke: "#a7c9dd", "stroke-width": 0.6, "stroke-dasharray": "2 4" }, gc);
         const spin = svgEl("g", { class: "compass-spin" }, gc);
-        svgEl("path", { d: "M0,-13 L4,0 L0,13 L-4,0 Z", fill: "#f6b94b", opacity: 0.9 }, spin);
-        svgEl("path", { d: "M0,-13 L4,0 L-4,0 Z", fill: "#e9f2fb", opacity: 0.85 }, spin);
-        const tx = svgEl("text", { y: -32, "text-anchor": "middle", fill: "#647d9e", "font-size": 12, "font-weight": 800, "font-family": "Bricolage Grotesque, sans-serif" }, gc);
+        svgEl("path", { d: "M0,-13 L4,0 L0,13 L-4,0 Z", fill: "#b2262f", opacity: 0.9 }, spin);
+        svgEl("path", { d: "M0,-13 L4,0 L-4,0 Z", fill: "#1f2c36", opacity: 0.85 }, spin);
+        const tx = svgEl("text", { y: -32, "text-anchor": "middle", fill: "#5c6b78", "font-size": 12, "font-weight": 800, "font-family": "Bricolage Grotesque, sans-serif" }, gc);
         tx.textContent = "N";
 
         // legenda
-        const lg = svgEl("g", { transform: "translate(26,610)" }, mapSvg);
-        const legBg = svgEl("rect", { x: -12, y: -20, width: 210, height: 88, rx: 12, fill: "#0b1b30", opacity: 0.9, stroke: "#1e3554" }, lg);
+        const lg = svgEl("g", { transform: "translate(26,606)" }, mapSvg);
+        const legBg = svgEl("rect", { x: -12, y: -22, width: 216, height: 92, rx: 12, fill: "rgba(255,255,255,.92)", stroke: "#d3dfe8" }, lg);
         legBg.style.pointerEvents = "none";
-        const legT = svgEl("text", { y: -2, fill: "#647d9e", "font-size": 10, "font-weight": 800, "letter-spacing": "1.5" }, lg);
+        const legT = svgEl("text", { y: -3, fill: "#5c6b78", "font-size": 10, "font-weight": 800, "letter-spacing": "1.5" }, lg);
         legT.textContent = "TWÓJ POSTĘP";
-        [["nowe", "#2b4b72", 14], ["w trakcie", "#4b7a9e", 36], ["opanowane", "#2f9e77", 58]].forEach((it) => {
-          svgEl("rect", { x: 0, y: it[2], width: 12, height: 12, rx: 3, fill: it[1] }, lg).style.pointerEvents = "none";
-          const t = svgEl("text", { x: 20, y: it[2] + 10, fill: "#94aac6", "font-size": 12, "font-family": "Manrope, sans-serif" }, lg);
+        [["nowe", "#faf4e3", 14], ["w trakcie", "#ffe3ae", 36], ["opanowane", "#cdeed9", 58]].forEach((it) => {
+          svgEl("rect", { x: 0, y: it[2], width: 12, height: 12, rx: 3, fill: it[1], stroke: "#c9c0ae", "stroke-width": 0.7 }, lg).style.pointerEvents = "none";
+          const t = svgEl("text", { x: 20, y: it[2] + 10, fill: "#3d4c58", "font-size": 12, "font-family": "Manrope, sans-serif" }, lg);
           t.textContent = it[0];
           t.style.pointerEvents = "none";
         });
 
+        bindZoomAndPan();
+        applyZoom();
+        applyToggles();
         paintMap();
       }
 
@@ -893,9 +1080,12 @@
         }
       }
 
-      function applyCaps() {
+      function applyToggles() {
         if (!mapSvg) return;
         mapSvg.classList.toggle("caps-off", !ex.showCaps);
+        mapSvg.classList.toggle("names-off", false);
+        mapSvg.classList.toggle("capnames-off", false);
+        applyZoom();
       }
 
       function showMark(id) {
@@ -1201,7 +1391,25 @@
           wrap.appendChild(mapTip);
         }
         paintMap();
-        applyCaps();
+        if (!wrap.querySelector("#zoomBtns")) {
+          const zb = document.createElement("div");
+          zb.id = "zoomBtns";
+          zb.innerHTML =
+            '<button data-act="zoom-in" title="Przybliż">+</button>' +
+            '<button data-act="zoom-out" title="Oddal">−</button>' +
+            '<button data-act="zoom-reset" title="Cała Europa" style="font-size:15px;">' + I.refresh + "</button>";
+          wrap.appendChild(zb);
+        }
+        let hb = wrap.querySelector("#hintBar");
+        if (!hb) {
+          hb = document.createElement("div");
+          hb.id = "hintBar";
+          wrap.appendChild(hb);
+        }
+        hb.textContent = view === "mapquiz"
+          ? "Kliknij państwo, którego szukasz. Kółko myszy przybliża mapę."
+          : "Kliknij państwo lub czerwoną kropkę stolicy. Kółkiem myszy przybliżasz mapę — pojawiają się wtedy nazwy mniejszych państw.";
+        applyToggles();
         if (view === "mapa" && ex.sel) showMark(ex.sel); else hideMark();
       }
 
@@ -1243,7 +1451,7 @@
       /* ============================================================
          WIDOK: MAPA (eksploracja)
          ============================================================ */
-      const ex = { q: "", region: "all", sel: null, showCaps: true, tooltips: true };
+      const ex = { q: "", region: "all", sel: null, showCaps: true, showNames: false, showCapNames: false, tooltips: true };
 
       function filteredCountries() {
         const q = ex.q.trim().toLowerCase();
@@ -1261,6 +1469,10 @@
           '<div style="display:flex; flex-wrap:wrap; gap:6px;" id="ex-regions"></div>' +
           '<button class="btn btn-ghost btn-sm" data-act="ex-caps" title="Pokaż/ukryj stolice na mapie">' +
           (ex.showCaps ? I.eye : I.eyeoff) + " Stolice</button>" +
+          '<button class="btn btn-ghost btn-sm' + (ex.showNames ? '" style="border-color:rgba(246,185,75,.5); color:var(--amber);' : '') + '" data-act="ex-names" title="Nazwy państw na mapie — przybliż, by zobaczyć też te małe">' +
+          (ex.showNames ? I.eye : I.eyeoff) + " Nazwy</button>" +
+          '<button class="btn btn-ghost btn-sm' + (ex.showCapNames ? '" style="border-color:rgba(246,185,75,.5); color:var(--amber);' : '') + '" data-act="ex-capnames" title="Nazwy stolic na mapie">' +
+          (ex.showCapNames ? I.eye : I.eyeoff) + " Nazwy stolic</button>" +
           '<button class="btn btn-ghost btn-sm" data-act="ex-tips" title="Podpowiedzi po najechaniu">' +
           (ex.tooltips ? I.eye : I.eyeoff) + " Podpowiedzi</button>" +
           '<button class="btn btn-ghost btn-sm" data-act="ex-import" title="Wczytaj kontury państw z pliku JSON / GeoJSON / TopoJSON / HTML (dane osadzone wewnątrz). Możesz też upuścić plik myszką wprost na mapę.">' +
@@ -1311,6 +1523,11 @@
             '<div><div class="lbl">Stolica</div>' +
             '<div class="font-display" style="font-size:20px; font-weight:800; color:#f6b94b; margin-top:2px;">' + esc(sel.capital) + "</div></div>" +
             '<button class="btn btn-amber btn-sm" data-act="fc-quick" data-id="' + sel.id + '">Fiszki: ' + esc(sel.name) + "</button></div>" +
+            (FACTS[sel.id]
+              ? '<div style="margin-top:14px; padding:11px 13px; border-left:3px solid rgba(246,185,75,.65); background:rgba(246,185,75,.06); border-radius:0 10px 10px 0;">' +
+                '<div class="lbl" style="margin-bottom:4px;">Ciekawostka</div>' +
+                '<p style="font-size:13px; line-height:1.55; margin:0; color:var(--mut);">' + esc(FACTS[sel.id]) + "</p></div>"
+              : "") +
             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">' +
             '<div style="padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0b1b30;">' +
             '<div class="lbl">Próby w quizach</div>' +
@@ -1924,8 +2141,13 @@
           case "map-retry": loadMap(); break;
 
           case "ex-region": ex.region = b.dataset.r; renderExplore(); break;
-          case "ex-caps": ex.showCaps = !ex.showCaps; applyCaps(); renderExplore(); break;
+          case "ex-caps": ex.showCaps = !ex.showCaps; applyToggles(); renderExplore(); break;
+          case "ex-names": ex.showNames = !ex.showNames; applyToggles(); renderExplore(); break;
+          case "ex-capnames": ex.showCapNames = !ex.showCapNames; applyToggles(); renderExplore(); break;
           case "ex-tips": ex.tooltips = !ex.tooltips; renderExplore(); break;
+          case "zoom-in": if (mapSvg) zoomAt(W / 2, H / 2, 1.4); break;
+          case "zoom-out": if (mapSvg) zoomAt(W / 2, H / 2, 1 / 1.4); break;
+          case "zoom-reset": zm.k = 1; zm.tx = 0; zm.ty = 0; applyZoom(); break;
           case "ex-import": fileInput.click(); break;
           case "map-reset-custom":
             try { localStorage.removeItem(CUSTOM_KEY); } catch (e2) {}
@@ -1985,6 +2207,7 @@
       // klik w mapę
       document.addEventListener("click", (e) => {
         if (mapState !== "ready") return;
+        if (justDragged) { justDragged = false; return; }
         const t = e.target.closest ? e.target.closest("[data-id]") : null;
         if (!t || !$("#mapwrap").contains(t)) return;
         const id = t.dataset.id;
