@@ -14,8 +14,6 @@
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@400..800&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/d3-geo@3.1.1/dist/d3-geo.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
       :root {
         --bg: #0a1626;
@@ -612,11 +610,36 @@
          ============================================================ */
       const W = 920, H = 690;
       const NS = "http://www.w3.org/2000/svg";
+
+      /* --- biblioteki mapy: ładowane dynamicznie z serwerów lustrzanych --- */
+      const D3_URLS = [
+        "https://cdn.jsdelivr.net/npm/d3-geo@3.1.1/dist/d3-geo.min.js",
+        "https://fastly.jsdelivr.net/npm/d3-geo@3.1.1/dist/d3-geo.min.js",
+        "https://gcore.jsdelivr.net/npm/d3-geo@3.1.1/dist/d3-geo.min.js",
+        "https://unpkg.com/d3-geo@3.1.1/dist/d3-geo.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/d3-geo/3.1.1/d3-geo.min.js"
+      ];
+      const TOPOJSON_URLS = [
+        "https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+        "https://fastly.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+        "https://gcore.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js",
+        "https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/topojson-client/3.1.0/topojson-client.min.js"
+      ];
+      /* --- kontury państw: 8 źródeł zapasowych --- */
       const TOPO_URLS = [
         "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json",
-        "https://unpkg.com/world-atlas@2/countries-50m.json"
+        "https://fastly.jsdelivr.net/npm/world-atlas@2/countries-50m.json",
+        "https://gcore.jsdelivr.net/npm/world-atlas@2/countries-50m.json",
+        "https://unpkg.com/world-atlas@2/countries-50m.json",
+        "https://cdn.statically.io/npm/world-atlas@2.0.2/countries-50m.json",
+        "https://esm.sh/world-atlas@2/countries-50m.json",
+        "https://cdn.jsdelivr.net/gh/topojson/world-atlas@master/countries-50m.json",
+        "https://raw.githubusercontent.com/topojson/world-atlas/master/countries-50m.json"
       ];
+      const CACHE_KEY = "kompas-map-cache-v1";
       let mapState = "loading"; // loading | ready | error
+      let mapCached = false;
       let mapSvg = null, mapTip = null, markRing = null, capsG = null;
       const mapNodes = {}; // id -> path/circle
       const capPos = {};   // id -> [x,y]
@@ -646,28 +669,98 @@
           .translate([W / 2 - cx, H / 2 - cy]);
       }
 
-      async function loadTopo() {
-        for (const u of TOPO_URLS) {
+      function setMapStatus(text) {
+        const el = document.getElementById("map-status");
+        if (el) el.textContent = text;
+      }
+
+      function loadScript(url) {
+        return new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = url;
+          s.onload = () => resolve();
+          s.onerror = () => { s.remove(); reject(new Error("script: " + url)); };
+          document.head.appendChild(s);
+        });
+      }
+
+      async function loadLibsWithFallback(urls, check) {
+        if (check()) return;
+        for (const u of urls) {
           try {
-            const r = await fetch(u);
-            if (r.ok) return await r.json();
+            await loadScript(u);
+            if (check()) return;
           } catch (e) {}
         }
-        throw new Error("topo");
+        throw new Error("libs");
+      }
+
+      async function fetchWithTimeout(url, ms) {
+        const ctrl = "AbortController" in window ? new AbortController() : null;
+        const t = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
+        try {
+          const r = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
+          if (!r.ok) throw new Error("http " + r.status);
+          return await r.json();
+        } finally {
+          if (t) clearTimeout(t);
+        }
+      }
+
+      function readMapCache() {
+        try {
+          const raw = localStorage.getItem(CACHE_KEY);
+          if (!raw) return null;
+          const obj = JSON.parse(raw);
+          if (obj && obj.topo && obj.topo.objects && obj.topo.objects.countries) return obj.topo;
+        } catch (e) {}
+        return null;
+      }
+
+      function writeMapCache(topo) {
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ topo: topo })); } catch (e) {}
       }
 
       async function loadMap() {
         mapState = "loading";
+        mapCached = false;
         renderMapWrap();
+        setMapStatus("pobieram biblioteki mapy…");
         try {
-          const topo = await loadTopo();
-          buildMap(topo);
-          mapState = "ready";
-          mapReady = true;
+          await loadLibsWithFallback(D3_URLS, () => !!(window.d3 && window.d3.geoPath));
+          await loadLibsWithFallback(TOPOJSON_URLS, () => !!(window.topojson && window.topojson.feature));
         } catch (e) {
           mapState = "error";
+          renderMapWrap();
+          return;
         }
+
+        setMapStatus("szukam mapy w pamięci przeglądarki…");
+        let topo = readMapCache();
+        if (topo) {
+          mapCached = true;
+        } else {
+          for (let i = 0; i < TOPO_URLS.length; i++) {
+            setMapStatus("pobieram kontury państw… (źródło " + (i + 1) + "/" + TOPO_URLS.length + ")");
+            try {
+              const t = await fetchWithTimeout(TOPO_URLS[i], 9000);
+              if (t && t.objects && t.objects.countries) { topo = t; break; }
+            } catch (e) {}
+          }
+        }
+        if (!topo) {
+          mapState = "error";
+          renderMapWrap();
+          return;
+        }
+        if (!mapCached) writeMapCache(topo);
+
+        setMapStatus("rysuję kontury…");
+        buildMap(topo);
+        mapState = "ready";
+        mapReady = true;
         renderMapWrap();
+        if (view === "mapa") renderExplore();
       }
 
       function buildMap(topo) {
@@ -799,14 +892,16 @@
           wrap.innerHTML =
             '<div class="map-loading"><div class="spinner"></div>' +
             '<div><div class="font-display" style="font-weight:700; color:var(--ink);">Rysuję mapę Europy…</div>' +
-            '<div style="font-size:12px; margin-top:4px;">pobieram kontury państw</div></div></div>';
+            '<div id="map-status" style="font-size:12px; margin-top:4px;">przygotowuję…</div></div></div>';
           return;
         }
         if (mapState === "error") {
           wrap.innerHTML =
             '<div class="map-error"><span style="color:var(--coral); display:inline-flex;">' + I.warn + "</span>" +
             '<div><div class="font-display" style="font-weight:700; color:var(--ink);">Mapa nie mogła się załadować</div>' +
-            '<div style="font-size:12px; margin-top:4px; max-width:380px;">Kontury państw pobierane są z internetu. Sprawdź połączenie i spróbuj ponownie.</div></div>' +
+            '<div style="font-size:12px; margin-top:4px; max-width:420px; line-height:1.55;">Nie udało się pobrać bibliotek lub konturów państw z żadnego z 8 zapasowych źródeł. ' +
+            "Sprawdź połączenie z internetem (albo czy bloker reklam nie wycina domen CDN) i kliknij poniżej. " +
+            "<b style=\"color:var(--ink);\">Po pierwszym udanym załadowaniu mapa zapisuje się w tej przeglądarce i działa offline.</b></div></div>" +
             '<button class="btn btn-amber" data-act="map-retry">' + I.refresh + " Spróbuj ponownie</button></div>";
           return;
         }
@@ -880,6 +975,10 @@
           (ex.showCaps ? I.eye : I.eyeoff) + " Stolice</button>" +
           '<button class="btn btn-ghost btn-sm" data-act="ex-tips" title="Podpowiedzi po najechaniu">' +
           (ex.tooltips ? I.eye : I.eyeoff) + " Podpowiedzi</button>" +
+          (mapCached
+            ? '<span class="chip" title="Mapa zapisana w tej przeglądarce — kolejne otwarcia zadziałają bez internetu." style="pointer-events:none; color:#3ecf8e; border-color:rgba(62,207,142,.4); background:rgba(62,207,142,.08);">' +
+              I.check + " mapa w pamięci · offline</span>"
+            : "") +
           "</div>";
         $("#ex-regions").innerHTML =
           '<button class="chip' + (ex.region === "all" ? " chip-on" : "") + '" data-act="ex-region" data-r="all">Wszystkie</button>' +
