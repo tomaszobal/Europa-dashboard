@@ -192,6 +192,7 @@
         background: #0a1a2e; box-shadow: 0 12px 32px rgba(3, 10, 20, 0.35);
       }
       .map-svg { display: block; width: 100%; height: auto; }
+      #mapwrap.drop-hot { outline: 3px dashed rgba(246, 185, 75, 0.65); outline-offset: -7px; }
       .sea-outline { stroke: #23466f; stroke-width: 1.1; }
       .graticule { fill: none; stroke: #1d3a5f; stroke-width: 0.6; stroke-dasharray: 2 5; opacity: 0.8; }
       .ctx { fill: #14283f; stroke: #0a1a2e; stroke-width: 0.5; }
@@ -638,7 +639,11 @@
         "https://raw.githubusercontent.com/topojson/world-atlas/master/countries-50m.json"
       ];
       const CACHE_KEY = "kompas-map-cache-v1";
+      const CUSTOM_KEY = "kompas-custom-map-v1";
       let mapState = "loading"; // loading | ready | error
+      let customMapActive = false;
+      let customMapName = "";
+      let customMemory = null; // mapa tylko na sesję (gdy za duża do localStorage)
       let mapCached = false;
       let mapSvg = null, mapTip = null, markRing = null, capsG = null;
       const mapNodes = {}; // id -> path/circle
@@ -735,6 +740,22 @@
           return;
         }
 
+        setMapStatus("sprawdzam własną mapę z pliku…");
+        const custom = readCustomMap() || customMemory;
+        if (custom && custom.feats && custom.feats.length) {
+          customMapActive = true;
+          customMapName = custom.name || "użytkownika";
+          setMapStatus("rysuję kontury z pliku " + customMapName + "…");
+          buildMap(custom.feats);
+          mapState = "ready";
+          mapReady = true;
+          renderMapWrap();
+          if (view === "mapa") renderExplore();
+          return;
+        }
+        customMapActive = false;
+        customMapName = "";
+
         setMapStatus("szukam mapy w pamięci przeglądarki…");
         let topo = readMapCache();
         if (topo) {
@@ -756,15 +777,16 @@
         if (!mapCached) writeMapCache(topo);
 
         setMapStatus("rysuję kontury…");
-        buildMap(topo);
+        const okey = topo.objects.countries ? "countries" : Object.keys(topo.objects)[0];
+        buildMap(topojson.feature(topo, topo.objects[okey]).features);
         mapState = "ready";
         mapReady = true;
         renderMapWrap();
         if (view === "mapa") renderExplore();
       }
 
-      function buildMap(topo) {
-        const feats = topojson.feature(topo, topo.objects.countries).features;
+      function buildMap(featsRaw) {
+        const feats = featsRaw.map(normalizeFeature).filter((f) => f && f.geometry);
         const proj = makeProjection();
         const path = d3.geoPath(proj);
 
@@ -886,6 +908,134 @@
       }
       function hideMark() { if (markRing) markRing.style.display = "none"; }
 
+      /* ---------------- własna mapa z pliku ---------------- */
+      const ISO2_TO_ID = {};
+      const ISO3_TO_ID = {};
+      const NAME_TO_ID = {};
+      COUNTRIES.forEach((c) => { ISO2_TO_ID[c.iso2] = c.id; NAME_TO_ID[c.name.toLowerCase()] = c.id; });
+      [
+        ["alb", "008"], ["and", "020"], ["aut", "040"], ["blr", "112"], ["bel", "056"], ["bih", "070"],
+        ["bgr", "100"], ["hrv", "191"], ["cyp", "196"], ["cze", "203"], ["dnk", "208"], ["est", "233"],
+        ["fin", "246"], ["fra", "250"], ["grc", "300"], ["esp", "724"], ["nld", "528"], ["irl", "372"],
+        ["isl", "352"], ["lie", "438"], ["ltu", "440"], ["lux", "442"], ["lva", "428"], ["mlt", "470"],
+        ["mda", "498"], ["mco", "492"], ["deu", "276"], ["nor", "578"], ["pol", "616"], ["prt", "620"],
+        ["rus", "643"], ["rou", "642"], ["smr", "674"], ["mkd", "807"], ["svk", "703"], ["svn", "705"],
+        ["che", "756"], ["swe", "752"], ["tur", "792"], ["ukr", "804"], ["vat", "336"], ["gbr", "826"],
+        ["hun", "348"], ["ita", "380"], ["srb", "688"], ["mne", "499"], ["xkx", "-99"]
+      ].forEach((kv) => { ISO3_TO_ID[kv[0]] = kv[1]; });
+      [
+        ["germany", "276"], ["poland", "616"], ["france", "250"], ["italy", "380"], ["spain", "724"],
+        ["united kingdom", "826"], ["czechia", "203"], ["czech republic", "203"], ["czech rep.", "203"],
+        ["slovakia", "703"], ["austria", "040"], ["switzerland", "756"], ["netherlands", "528"],
+        ["belgium", "056"], ["luxembourg", "442"], ["denmark", "208"], ["norway", "578"], ["sweden", "752"],
+        ["finland", "246"], ["iceland", "352"], ["ireland", "372"], ["portugal", "620"], ["greece", "300"],
+        ["turkey", "792"], ["russia", "643"], ["ukraine", "804"], ["belarus", "112"], ["lithuania", "440"],
+        ["latvia", "428"], ["estonia", "233"], ["moldova", "498"], ["romania", "642"], ["bulgaria", "100"],
+        ["serbia", "688"], ["republic of serbia", "688"], ["croatia", "191"], ["slovenia", "705"],
+        ["bosnia and herzegovina", "070"], ["bosnia and herz.", "070"], ["bosnia-herzegovina", "070"],
+        ["albania", "008"], ["north macedonia", "807"], ["macedonia", "807"], ["montenegro", "499"],
+        ["kosovo", "-99"], ["hungary", "348"], ["malta", "470"], ["cyprus", "196"], ["andorra", "020"],
+        ["monaco", "492"], ["san marino", "674"], ["liechtenstein", "438"], ["vatican", "336"], ["holy see", "336"]
+      ].forEach((kv) => { NAME_TO_ID[kv[0]] = kv[1]; });
+
+      function normalizeFeature(f) {
+        const p = (f.properties = f.properties || {});
+        p.name = p.name || p.NAME || p.ADMIN || p.admin || p.NAME_PL || p.name_pl || p.PL_NAME || p.pl_name || p.NAME_LONG || "";
+        let id = f.id != null && f.id !== "" ? String(f.id) : null;
+        if (id && /^\d+$/.test(id)) id = id.padStart(3, "0");
+        if (!id || !byId[id]) {
+          const a2 = String(p.iso_a2 || p.ISO_A2 || p.ISO_A2_EH || p.ISO_A2_1 || "").toUpperCase();
+          const a3 = String(p.iso_a3 || p.ISO_A3 || p.ADM0_A3 || p.adm0_a3 || p.GU_A3 || p.SOV_A3 || "").toLowerCase();
+          if (a2 === "XK" || a2 === "KV") id = "-99";
+          else if (ISO2_TO_ID[a2]) id = ISO2_TO_ID[a2];
+          else if (a3 === "xkx" || a3 === "kvx") id = "-99";
+          else if (ISO3_TO_ID[a3]) id = ISO3_TO_ID[a3];
+        }
+        if (!id || !byId[id]) {
+          const nm = String(p.name).toLowerCase().trim();
+          if (NAME_TO_ID[nm]) id = NAME_TO_ID[nm];
+        }
+        if (id) f.id = id;
+        return f;
+      }
+
+      function parseMapData(text) {
+        const t = text.trim();
+        if (t.charAt(0) === "<") {
+          throw new Error("To wygląda na plik HTML, a nie dane mapy. Wklej go w czacie — wyciągnę z niego kontury.");
+        }
+        let obj;
+        try { obj = JSON.parse(t); } catch (e) { throw new Error("Plik nie jest poprawnym JSON-em."); }
+        let feats, store;
+        if (obj.type === "Topology" && obj.objects) {
+          const key = obj.objects.countries ? "countries" : Object.keys(obj.objects)[0];
+          feats = topojson.feature(obj, obj.objects[key]).features;
+          store = { kind: "topo", topo: obj };
+        } else if (obj.type === "FeatureCollection" && Array.isArray(obj.features)) {
+          feats = obj.features;
+          store = {
+            kind: "feats",
+            feats: feats
+              .filter((f) => f && f.geometry)
+              .map((f) => ({
+                type: "Feature",
+                id: f.id != null ? f.id : null,
+                properties: {
+                  name: (f.properties && (f.properties.name || f.properties.NAME || f.properties.ADMIN)) || "",
+                  iso_a2: (f.properties && (f.properties.iso_a2 || f.properties.ISO_A2)) || "",
+                  iso_a3: (f.properties && (f.properties.iso_a3 || f.properties.ISO_A3 || f.properties.ADM0_A3)) || ""
+                },
+                geometry: f.geometry
+              }))
+          };
+        } else if (obj.type === "Feature") {
+          feats = [obj];
+          store = { kind: "feats", feats: [obj] };
+        } else {
+          throw new Error("Nie rozpoznaję struktury pliku. Oczekuję TopoJSON lub GeoJSON (FeatureCollection).");
+        }
+        feats = feats.map(normalizeFeature).filter((f) => f && f.geometry);
+        if (!feats.length) throw new Error("W pliku nie znalazłem żadnych geometrii państw.");
+        const known = feats.filter((f) => byId[f.id]).length;
+        return { feats: feats, count: feats.length, known: known, store: store };
+      }
+
+      function readCustomMap() {
+        try {
+          const raw = localStorage.getItem(CUSTOM_KEY);
+          if (!raw) return null;
+          const obj = JSON.parse(raw);
+          if (!obj) return null;
+          if (obj.kind === "topo" && obj.topo && obj.topo.objects) {
+            const key = obj.topo.objects.countries ? "countries" : Object.keys(obj.topo.objects)[0];
+            return { feats: topojson.feature(obj.topo, obj.topo.objects[key]).features, name: obj.name || "" };
+          }
+          if (obj.kind === "feats" && Array.isArray(obj.feats)) return { feats: obj.feats, name: obj.name || "" };
+        } catch (e) {}
+        return null;
+      }
+
+      async function handleMapFile(file) {
+        toast("Wczytuję " + file.name + "…", "info");
+        let text = null;
+        try {
+          if (file.text) text = await file.text();
+          else text = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(file); });
+        } catch (e) { toast("Nie udało się odczytać pliku.", "warn"); return; }
+        let parsed;
+        try { parsed = parseMapData(text); } catch (err) { toast(err.message, "warn"); return; }
+        parsed.store.name = file.name;
+        let persisted = true;
+        try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(parsed.store)); }
+        catch (e) { persisted = false; customMemory = { feats: parsed.feats, name: file.name }; }
+        await loadMap();
+        toast(
+          "Wczytano " + parsed.count + " państw z pliku " + file.name +
+          " (rozpoznanych na liście: " + parsed.known + ")" + (persisted ? " — mapa zapamiętana" : " — tylko na tę sesję"),
+          "ok"
+        );
+      }
+
       function renderMapWrap() {
         const wrap = $("#mapwrap");
         if (mapState === "loading") {
@@ -902,7 +1052,11 @@
             '<div style="font-size:12px; margin-top:4px; max-width:420px; line-height:1.55;">Nie udało się pobrać bibliotek lub konturów państw z żadnego z 8 zapasowych źródeł. ' +
             "Sprawdź połączenie z internetem (albo czy bloker reklam nie wycina domen CDN) i kliknij poniżej. " +
             "<b style=\"color:var(--ink);\">Po pierwszym udanym załadowaniu mapa zapisuje się w tej przeglądarce i działa offline.</b></div></div>" +
-            '<button class="btn btn-amber" data-act="map-retry">' + I.refresh + " Spróbuj ponownie</button></div>";
+            '<button class="btn btn-amber" data-act="map-retry">' + I.refresh + " Spróbuj ponownie</button>" +
+            (localStorage.getItem(CUSTOM_KEY) || customMemory
+              ? '<button class="btn btn-ghost" data-act="map-reset-custom" style="margin-left:10px;">' + I.x + " Przywróć domyślną mapę</button>"
+              : "") +
+            "</div>";
           return;
         }
         if (!wrap.contains(mapSvg)) {
@@ -975,6 +1129,14 @@
           (ex.showCaps ? I.eye : I.eyeoff) + " Stolice</button>" +
           '<button class="btn btn-ghost btn-sm" data-act="ex-tips" title="Podpowiedzi po najechaniu">' +
           (ex.tooltips ? I.eye : I.eyeoff) + " Podpowiedzi</button>" +
+          '<button class="btn btn-ghost btn-sm" data-act="ex-import" title="Wczytaj kontury państw z pliku JSON / GeoJSON / TopoJSON. Możesz też upuścić plik myszką wprost na mapę.">' +
+          I.cards + " Mapa z pliku</button>" +
+          (customMapActive
+            ? '<span class="chip" style="pointer-events:none; color:var(--amber); border-color:rgba(246,185,75,.45); background:rgba(246,185,75,.08);">' +
+              I.map + " własna mapa" + (customMapName ? ": " + esc(customMapName) : "") + "</span>" +
+              '<button class="btn btn-ghost btn-sm" data-act="map-reset-custom" title="Wróć do wbudowanej mapy świata">' +
+              I.refresh + " Domyślna</button>"
+            : "") +
           (mapCached
             ? '<span class="chip" title="Mapa zapisana w tej przeglądarce — kolejne otwarcia zadziałają bez internetu." style="pointer-events:none; color:#3ecf8e; border-color:rgba(62,207,142,.4); background:rgba(62,207,142,.08);">' +
               I.check + " mapa w pamięci · offline</span>"
@@ -1630,6 +1792,13 @@
           case "ex-region": ex.region = b.dataset.r; renderExplore(); break;
           case "ex-caps": ex.showCaps = !ex.showCaps; applyCaps(); renderExplore(); break;
           case "ex-tips": ex.tooltips = !ex.tooltips; renderExplore(); break;
+          case "ex-import": fileInput.click(); break;
+          case "map-reset-custom":
+            try { localStorage.removeItem(CUSTOM_KEY); } catch (e2) {}
+            customMemory = null;
+            toast("Wracam do domyślnej mapy…", "info");
+            loadMap();
+            break;
           case "ex-sel": selectCountry(b.dataset.id); break;
           case "ex-clear-sel": ex.sel = null; hideMark(); paintMap(); renderExPanels(); break;
           case "ex-clear-q": ex.q = ""; renderExplore(); break;
@@ -1721,6 +1890,42 @@
           if (view === "mapa") renderExPanels();
           else if (view === "postepy") renderProgress();
         }, 200);
+      });
+
+      /* ---------------- wybór i upuszczanie pliku z mapą ---------------- */
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".json,.geojson,.topojson,application/json,application/geo+json";
+      fileInput.style.display = "none";
+      document.body.appendChild(fileInput);
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files && fileInput.files[0]) handleMapFile(fileInput.files[0]);
+        fileInput.value = "";
+      });
+
+      ["dragover", "dragenter"].forEach((ev) =>
+        document.addEventListener(ev, (e) => {
+          const types = e.dataTransfer ? e.dataTransfer.types : null;
+          if (types && Array.prototype.indexOf.call(types, "Files") !== -1) {
+            e.preventDefault();
+            const w = $("#mapwrap");
+            if (w) w.classList.add("drop-hot");
+          }
+        })
+      );
+      document.addEventListener("dragleave", (e) => {
+        if (!e.relatedTarget) {
+          const w = $("#mapwrap");
+          if (w) w.classList.remove("drop-hot");
+        }
+      });
+      document.addEventListener("drop", (e) => {
+        const w = $("#mapwrap");
+        if (w) w.classList.remove("drop-hot");
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+          e.preventDefault();
+          handleMapFile(e.dataTransfer.files[0]);
+        }
       });
 
       /* ---------------- start ---------------- */
