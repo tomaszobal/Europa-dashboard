@@ -1010,6 +1010,7 @@
 
       function renderFc() {
         const root = $("#view-fiszki");
+        if (fc.phase === "play" && fc.queue.length === 0) fc.phase = "done";
         if (fc.phase === "setup") {
           const pool = fcPool();
           root.innerHTML =
@@ -1478,7 +1479,7 @@
         const tiles = root.querySelector(".pg-tiles");
         tiles.style.gridTemplateColumns = window.innerWidth >= 1280 ? "repeat(4, 1fr)" : window.innerWidth >= 640 ? "repeat(2, 1fr)" : "repeat(2, 1fr)";
         const reg = root.querySelector(".pg-reg");
-        if (window.innerWidth >= 1280) { reg.style.gridColumn = "1 / -1"; }
+        reg.style.gridColumn = "1 / -1";
         const bars = root.querySelector(".pg-regbars");
         if (window.innerWidth >= 640) bars.style.gridTemplateColumns = "1fr 1fr";
         const pgc = root.querySelector(".pg-countries");
@@ -1516,7 +1517,7 @@
 
       /* ---------------- globalna delegacja zdarzeń ---------------- */
       document.addEventListener("click", (e) => {
-        const b = e.target.closest("[data-act]");
+        const b = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
         if (!b || b.disabled) return;
         const act = b.dataset.act;
         switch (act) {
@@ -1543,9 +1544,9 @@
           case "fc-quick": fc.quickId = b.dataset.id; fc.phase = "setup"; setView("fiszki"); break;
 
           case "fc-dir": fc.dir = b.dataset.d; renderFc(); break;
-          case "fc-region": fc.region = b.dataset.r; renderFc(); break;
-          case "fc-start": fc.quickId = null; fcStart(); break;
-          case "fc-setup": fc.phase = "setup"; renderFc(); break;
+          case "fc-region": fc.quickId = null; fc.region = b.dataset.r; renderFc(); break;
+          case "fc-start": fcStart(); break;
+          case "fc-setup": fc.quickId = null; fc.phase = "setup"; renderFc(); break;
           case "fc-unquick": fc.quickId = null; renderFc(); break;
           case "fc-flip": fcFlip(); break;
           case "fc-bad": fcGrade(false); break;
