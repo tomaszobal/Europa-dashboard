@@ -1,0 +1,1643 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kompas — Atlas Europy · państwa i stolice</title>
+    <meta
+      name="description"
+      content="Interaktywny dashboard do nauki mapy Europy: państwa, stolice, fiszki i quizy dla szóstoklasisty. Jeden plik HTML — działa po otwarciu w przeglądarce."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Manrope:wght@400..800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/d3-geo@3.1.1/dist/d3-geo.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+    <style>
+      :root {
+        --bg: #0a1626;
+        --panel: #101f36;
+        --line: #1e3554;
+        --ink: #e9f2fb;
+        --mut: #94aac6;
+        --faint: #647d9e;
+        --amber: #f6b94b;
+        --green: #3ecf8e;
+        --coral: #f26d6d;
+        --sky: #58b4e8;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background-color: var(--bg);
+        color: var(--ink);
+        font-family: "Manrope", "Segoe UI", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body::before {
+        content: "";
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background-image: radial-gradient(#16304e 1px, transparent 1px);
+        background-size: 26px 26px;
+        opacity: 0.33;
+      }
+      body::after {
+        content: "";
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background:
+          radial-gradient(720px 430px at 10% -8%, rgba(246, 185, 75, 0.07), transparent 62%),
+          radial-gradient(820px 540px at 106% 110%, rgba(62, 207, 142, 0.06), transparent 62%);
+      }
+      ::selection { background: rgba(246, 185, 75, 0.35); }
+      button { font-family: inherit; }
+      .font-display { font-family: "Bricolage Grotesque", "Manrope", sans-serif; }
+      .hidden { display: none !important; }
+
+      .app { position: relative; z-index: 1; min-height: 100vh; }
+      @media (min-width: 768px) { .app { display: grid; grid-template-columns: 256px 1fr; } }
+
+      .panel {
+        background: linear-gradient(180deg, #122440, #0e1d33);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        box-shadow: 0 12px 32px rgba(3, 10, 20, 0.35);
+      }
+      .lbl {
+        display: block; font-size: 10.5px; letter-spacing: 0.16em;
+        text-transform: uppercase; color: var(--faint); font-weight: 700;
+      }
+      .chip {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+        color: var(--mut); background: #0b1b30; border: 1px solid var(--line);
+        padding: 5px 11px; border-radius: 999px; cursor: pointer; transition: all 0.2s;
+      }
+      .chip:hover { border-color: #31517a; color: var(--ink); }
+      .chip-on { color: #0a1626; background: var(--amber); border-color: var(--amber); font-weight: 800; }
+      .chip-on:hover { color: #0a1626; border-color: var(--amber); }
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px;
+        border-radius: 12px; padding: 10px 18px; border: 1px solid transparent; cursor: pointer; transition: all 0.18s;
+      }
+      .btn:active { transform: translateY(1px) scale(0.99); }
+      .btn:disabled { opacity: 0.4; pointer-events: none; }
+      .btn-amber { background: var(--amber); color: #0a1626; box-shadow: 0 6px 18px rgba(246, 185, 75, 0.25); }
+      .btn-amber:hover { background: #ffcf70; transform: translateY(-1px); }
+      .btn-green { background: var(--green); color: #07271a; }
+      .btn-green:hover { background: #5fdca4; transform: translateY(-1px); }
+      .btn-coral { background: rgba(242, 109, 109, 0.12); color: var(--coral); border-color: rgba(242, 109, 109, 0.4); }
+      .btn-coral:hover { background: rgba(242, 109, 109, 0.2); }
+      .btn-ghost { background: #0b1b30; color: var(--mut); border-color: var(--line); }
+      .btn-ghost:hover { color: var(--ink); border-color: #31517a; transform: translateY(-1px); }
+      .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 10px; }
+      .icon-btn {
+        display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
+        border: 1px solid var(--line); background: #0b1b30; color: var(--mut); cursor: pointer; transition: all 0.18s; flex-shrink: 0;
+      }
+      .icon-btn:hover { color: var(--ink); border-color: #31517a; }
+      .input {
+        width: 100%; background: #0b1b30; border: 1px solid var(--line); border-radius: 11px;
+        padding: 9px 12px; font-size: 14px; color: var(--ink); outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .input::placeholder { color: var(--faint); }
+      .input:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(246, 185, 75, 0.15); }
+      .seg {
+        display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; border-radius: 11px;
+        border: 1px solid var(--line); background: #0b1b30; color: var(--mut); font-size: 13px; font-weight: 700;
+        cursor: pointer; transition: all 0.18s;
+      }
+      .seg:hover { color: var(--ink); border-color: #31517a; }
+      .seg-on { background: rgba(246, 185, 75, 0.12); border-color: rgba(246, 185, 75, 0.55); color: var(--amber); }
+      .nav-item {
+        display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px; border-radius: 11px;
+        font-size: 14px; font-weight: 600; color: var(--mut); border: 1px solid transparent; cursor: pointer;
+        transition: all 0.18s; text-align: left; background: transparent;
+      }
+      .nav-item:hover { color: var(--ink); background: #10233d; }
+      .nav-on { color: var(--amber); background: rgba(246, 185, 75, 0.09); border-color: rgba(246, 185, 75, 0.3); }
+      .nav-chip {
+        display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12.5px; font-weight: 700;
+        color: var(--mut); background: #0b1b30; border: 1px solid var(--line); padding: 7px 12px; border-radius: 10px;
+        cursor: pointer; transition: all 0.18s;
+      }
+      .nav-chip-on { color: #0a1626; background: var(--amber); border-color: var(--amber); }
+      .row-item {
+        display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 10px;
+        border: 1px solid transparent; cursor: pointer; transition: all 0.15s; background: transparent; color: var(--ink); text-align: left;
+      }
+      .row-item:hover { background: #0b1b30; }
+      .row-active { background: rgba(246, 185, 75, 0.08); border-color: rgba(246, 185, 75, 0.35); }
+      .opt {
+        display: flex; align-items: center; gap: 12px; padding: 13px 15px; border-radius: 12px;
+        border: 1px solid var(--line); background: #0b1b30; cursor: pointer; transition: all 0.16s;
+        font-size: 15px; color: var(--ink); text-align: left; width: 100%;
+      }
+      .opt:hover:not(:disabled) { border-color: var(--amber); transform: translateY(-1px); }
+      .opt-letter {
+        display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px;
+        background: #122440; border: 1px solid var(--line); font-family: "Bricolage Grotesque", sans-serif;
+        font-weight: 800; font-size: 12px; color: var(--faint); flex-shrink: 0;
+      }
+      .opt-good { border-color: var(--green); background: rgba(62, 207, 142, 0.14); }
+      .opt-good .opt-letter { background: var(--green); color: #07271a; border-color: var(--green); }
+      .opt-bad { border-color: var(--coral); background: rgba(242, 109, 109, 0.12); animation: shake 0.4s; }
+      .opt-bad .opt-letter { background: var(--coral); color: #2b0c0c; border-color: var(--coral); }
+      .opt-dim { opacity: 0.4; }
+
+      /* ------- układ ------- */
+      .side {
+        display: none; flex-direction: column; gap: 20px; position: sticky; top: 0; height: 100vh;
+        border-right: 1px solid #16304e; background: rgba(12, 26, 46, 0.85); padding: 24px 16px; overflow-y: auto;
+      }
+      @media (min-width: 768px) { .side { display: flex; } }
+      .logo { display: flex; align-items: center; gap: 12px; padding: 0 4px; }
+      .logo-badge {
+        display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--amber);
+        color: #0a1626; box-shadow: 0 6px 18px rgba(246, 185, 75, 0.3);
+      }
+      .logo-name { font-family: "Bricolage Grotesque"; font-size: 18px; font-weight: 800; letter-spacing: 0.06em; line-height: 1; }
+      .logo-sub { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.22em; color: var(--faint); margin-top: 5px; }
+      .side-nav { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+      .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 14px; }
+      .m-top {
+        position: sticky; top: 0; z-index: 40; border-bottom: 1px solid #16304e;
+        background: rgba(12, 26, 46, 0.95); padding: 12px 16px 10px;
+      }
+      @media (min-width: 768px) { .m-top { display: none; } }
+      .m-nav { display: flex; gap: 6px; margin-top: 12px; overflow-x: auto; padding-bottom: 2px; }
+      .maincol { min-width: 0; }
+      header.top {
+        padding: 24px 20px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; justify-content: space-between;
+      }
+      @media (min-width: 640px) { header.top { padding: 24px 32px 20px; } }
+      header.top h1 {
+        font-family: "Bricolage Grotesque"; font-size: 27px; font-weight: 800; line-height: 1.15; margin: 0;
+      }
+      header.top .sub { font-size: 14px; color: var(--mut); margin: 5px 0 0; }
+      .hdr-chips { display: flex; align-items: center; gap: 10px; }
+      .hdr-chip {
+        display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 6px 12px; border: 1px solid rgba(246, 185, 75, 0.25);
+        background: rgba(246, 185, 75, 0.08);
+      }
+      .hdr-chip.streak { border-color: rgba(242, 109, 109, 0.25); background: rgba(242, 109, 109, 0.08); padding: 10px 12px; }
+      .hdr-chip b { font-family: "Bricolage Grotesque"; font-size: 14px; display: block; line-height: 1.1; }
+      .hdr-chip small { display: block; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--faint); margin-top: 2px; }
+      main.content { padding: 0 20px 80px; }
+      @media (min-width: 640px) { main.content { padding: 0 32px 80px; } }
+
+      /* ------- mapa ------- */
+      .mapwrap {
+        position: relative; border-radius: 16px; border: 1px solid var(--line); overflow: hidden;
+        background: #0a1a2e; box-shadow: 0 12px 32px rgba(3, 10, 20, 0.35);
+      }
+      .map-svg { display: block; width: 100%; height: auto; }
+      .sea-outline { stroke: #23466f; stroke-width: 1.1; }
+      .graticule { fill: none; stroke: #1d3a5f; stroke-width: 0.6; stroke-dasharray: 2 5; opacity: 0.8; }
+      .ctx { fill: #14283f; stroke: #0a1a2e; stroke-width: 0.5; }
+      .eu { stroke: #0a1a2e; stroke-width: 0.8; cursor: pointer; transition: filter 0.18s, fill 0.4s; }
+      .eu-new { fill: #2b4b72; }
+      .eu-try { fill: #4b7a9e; }
+      .eu-learned { fill: #2f9e77; }
+      .eu-q { fill: #2e527d; }
+      .eu:hover { filter: brightness(1.32) saturate(1.05); }
+      .eu-sel { stroke: var(--amber) !important; stroke-width: 2.2 !important; filter: drop-shadow(0 0 7px rgba(246, 185, 75, 0.55)); }
+      .eu-dot { stroke: #0a1626; stroke-width: 1; }
+      .mark-ring { fill: transparent; stroke: var(--amber); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.85; }
+      .cap circle.capdot { fill: var(--amber); stroke: #0a1626; stroke-width: 1.2; }
+      .cap .hit { fill: transparent; cursor: pointer; }
+      .caps-off .cap { display: none; }
+      .map-tip {
+        position: absolute; z-index: 30; pointer-events: none; background: rgba(12, 27, 48, 0.96);
+        border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); max-width: 230px; color: var(--ink);
+      }
+      .map-loading, .map-error {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 14px; padding: 80px 20px; color: var(--mut); text-align: center;
+      }
+      .spinner {
+        width: 42px; height: 42px; border-radius: 50%; border: 3px solid #1e3554; border-top-color: var(--amber);
+        animation: spin 0.9s linear infinite;
+      }
+      .fx-good { animation: fxGood 1s ease both; }
+      .fx-bad { animation: fxBad 1s ease both; }
+      .fx-reveal { fill: var(--green) !important; animation: pulseR 1.1s ease-in-out infinite; }
+      .compass-spin { animation: spin 80s linear infinite; transform-box: fill-box; transform-origin: center; }
+
+      /* ------- fiszki ------- */
+      .flip-card { perspective: 1400px; }
+      .flip-inner { position: relative; height: 100%; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1); }
+      .flip-inner.flipped { transform: rotateY(180deg); }
+      .flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+      .flip-back { transform: rotateY(180deg); }
+      .card-face {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 20px;
+        border: 1px solid var(--line); background: linear-gradient(160deg, #142a49, #0e1d33);
+        box-shadow: 0 18px 40px rgba(3, 10, 20, 0.45);
+      }
+      .card-back { background: linear-gradient(160deg, #123243, #0d2233); border-color: rgba(62, 207, 142, 0.4); }
+
+      /* ------- toasty / modal ------- */
+      #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+      .toast {
+        display: flex; align-items: center; gap: 9px; background: #0d1e36; border: 1px solid var(--line);
+        padding: 10px 16px; border-radius: 12px; font-size: 13.5px; font-weight: 600;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); animation: toastIn 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .toast.out { animation: toastOut 0.25s ease both; }
+      #modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; }
+      #modal .veil { position: absolute; inset: 0; background: rgba(6, 15, 29, 0.75); animation: fadeIn 0.25s ease both; }
+      #modal .mcard { position: relative; width: 100%; max-width: 26rem; padding: 24px; animation: popIn 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+      /* ------- animacje ------- */
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes viewIn { from { opacity: 0; transform: translateY(12px); } }
+      .animate-view { animation: viewIn 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+      @keyframes popIn { from { opacity: 0; transform: scale(0.94) translateY(8px); } }
+      .animate-popIn { animation: popIn 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+      @keyframes fadeIn { from { opacity: 0; } }
+      .animate-fadeIn { animation: fadeIn 0.3s ease both; }
+      @keyframes toastIn { from { opacity: 0; transform: translateX(24px); } }
+      @keyframes toastOut { to { opacity: 0; transform: translateX(24px); } }
+      @keyframes fxGood { 0%, 55% { fill: #3ecf8e; } }
+      @keyframes fxBad { 0%, 55% { fill: #f26d6d; } }
+      @keyframes pulseR { 50% { filter: brightness(1.5); } }
+      @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+
+      .nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+      .nice-scroll::-webkit-scrollbar-thumb { background: #1e3554; border-radius: 8px; }
+      .nice-scroll::-webkit-scrollbar-thumb:hover { background: #31517a; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- ================= SIDEBAR ================= -->
+      <aside class="side nice-scroll">
+        <div class="logo">
+          <span class="logo-badge" data-icon="compass"></span>
+          <div>
+            <div class="logo-name">KOMPAS</div>
+            <div class="logo-sub">Atlas Europy · klasa 6</div>
+          </div>
+        </div>
+        <nav class="side-nav" id="sideNav"></nav>
+        <div class="side-foot">
+          <div class="panel" style="padding: 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:12px; margin-bottom:8px;">
+              <span style="font-weight:700;">Opanowane</span>
+              <span class="font-display" style="font-weight:800; color:var(--amber);" id="sideTxt">0/47</span>
+            </div>
+            <div style="height:10px; border-radius:999px; background:#122440; border:1px solid var(--line); overflow:hidden;">
+              <div id="sideBar" style="height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg,#c98f2c,#f6b94b); transition:width .7s;"></div>
+            </div>
+          </div>
+          <div style="border-radius:12px; border:1px solid var(--line); background:rgba(11,27,48,.7); padding:14px;">
+            <div class="lbl" style="margin-bottom:6px;">Wskazówka nawigatora</div>
+            <p id="tip" style="font-size:12px; color:var(--mut); line-height:1.55; margin:0;"></p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ================= PASEK MOBILNY ================= -->
+      <div class="m-top">
+        <div class="logo">
+          <span class="logo-badge" data-icon="compass"></span>
+          <div>
+            <div class="logo-name">KOMPAS</div>
+            <div class="logo-sub">Atlas Europy · klasa 6</div>
+          </div>
+        </div>
+        <nav class="m-nav nice-scroll" id="mNav"></nav>
+      </div>
+
+      <!-- ================= TREŚĆ ================= -->
+      <div class="maincol">
+        <header class="top">
+          <div>
+            <h1 id="hdrTitle">Mapa Europy</h1>
+            <p class="sub" id="hdrSub"></p>
+          </div>
+          <div class="hdr-chips">
+            <div class="hdr-chip">
+              <svg width="34" height="34" style="transform:rotate(-90deg)">
+                <circle cx="17" cy="17" r="13" stroke="#1e3554" stroke-width="4" fill="none"></circle>
+                <circle id="hdrRingC" cx="17" cy="17" r="13" stroke="#f6b94b" stroke-width="4" fill="none"
+                  stroke-linecap="round" stroke-dasharray="81.68" stroke-dashoffset="81.68"
+                  style="transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)"></circle>
+              </svg>
+              <div><b id="hdrLearned">0/47</b><small>opanowane</small></div>
+            </div>
+            <div class="hdr-chip streak">
+              <span data-icon="flame" style="color:var(--amber); display:inline-flex;"></span>
+              <div><b id="hdrStreak">0</b><small>rekord serii</small></div>
+            </div>
+          </div>
+        </header>
+
+        <main class="content">
+          <!-- MAPA -->
+          <section class="view hidden" id="view-mapa">
+            <div id="ex-toolbar" style="margin-bottom:14px;"></div>
+            <div class="mapwrap" id="mapwrap"></div>
+            <div id="ex-panels" style="display:grid; gap:20px; margin-top:20px; align-items:start;"></div>
+          </section>
+
+          <!-- FISZKI -->
+          <section class="view hidden" id="view-fiszki"></section>
+
+          <!-- QUIZ -->
+          <section class="view hidden" id="view-quiz"></section>
+
+          <!-- QUIZ NA MAPIE -->
+          <section class="view hidden" id="view-mapquiz">
+            <div id="mq-hud" style="margin-bottom:14px;"></div>
+          </section>
+
+          <!-- POSTĘPY -->
+          <section class="view hidden" id="view-postepy"></section>
+        </main>
+      </div>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="modal" class="hidden"></div>
+
+    <script>
+      "use strict";
+      /* ============================================================
+         KOMPAS — Atlas Europy · wersja jednoplikowa (vanilla JS)
+         ============================================================ */
+
+      /* ---------------- dane ---------------- */
+      const COUNTRIES = [
+        { id: "008", iso2: "AL", name: "Albania", capital: "Tirana", region: "poludnie" },
+        { id: "020", iso2: "AD", name: "Andora", capital: "Andora la Vella", region: "poludnie" },
+        { id: "040", iso2: "AT", name: "Austria", capital: "Wiedeń", region: "zachod" },
+        { id: "112", iso2: "BY", name: "Białoruś", capital: "Mińsk", region: "wschod" },
+        { id: "056", iso2: "BE", name: "Belgia", capital: "Bruksela", region: "zachod" },
+        { id: "070", iso2: "BA", name: "Bośnia i Hercegowina", capital: "Sarajewo", region: "poludnie" },
+        { id: "100", iso2: "BG", name: "Bułgaria", capital: "Sofia", region: "poludnie" },
+        { id: "191", iso2: "HR", name: "Chorwacja", capital: "Zagrzeb", region: "poludnie" },
+        { id: "196", iso2: "CY", name: "Cypr", capital: "Nikozja", region: "poludnie" },
+        { id: "203", iso2: "CZ", name: "Czechy", capital: "Praga", region: "wschod" },
+        { id: "208", iso2: "DK", name: "Dania", capital: "Kopenhaga", region: "polnoc" },
+        { id: "233", iso2: "EE", name: "Estonia", capital: "Tallin", region: "polnoc" },
+        { id: "246", iso2: "FI", name: "Finlandia", capital: "Helsinki", region: "polnoc" },
+        { id: "250", iso2: "FR", name: "Francja", capital: "Paryż", region: "zachod" },
+        { id: "300", iso2: "GR", name: "Grecja", capital: "Ateny", region: "poludnie" },
+        { id: "724", iso2: "ES", name: "Hiszpania", capital: "Madryt", region: "poludnie" },
+        { id: "528", iso2: "NL", name: "Holandia", capital: "Amsterdam", region: "zachod" },
+        { id: "372", iso2: "IE", name: "Irlandia", capital: "Dublin", region: "zachod" },
+        { id: "352", iso2: "IS", name: "Islandia", capital: "Reykjavík", region: "polnoc" },
+        { id: "438", iso2: "LI", name: "Liechtenstein", capital: "Vaduz", region: "zachod" },
+        { id: "440", iso2: "LT", name: "Litwa", capital: "Wilno", region: "polnoc" },
+        { id: "442", iso2: "LU", name: "Luksemburg", capital: "Luksemburg", region: "zachod" },
+        { id: "428", iso2: "LV", name: "Łotwa", capital: "Ryga", region: "polnoc" },
+        { id: "470", iso2: "MT", name: "Malta", capital: "Valletta", region: "poludnie" },
+        { id: "498", iso2: "MD", name: "Mołdawia", capital: "Kiszyniów", region: "wschod" },
+        { id: "492", iso2: "MC", name: "Monako", capital: "Monako", region: "zachod" },
+        { id: "276", iso2: "DE", name: "Niemcy", capital: "Berlin", region: "zachod" },
+        { id: "578", iso2: "NO", name: "Norwegia", capital: "Oslo", region: "polnoc" },
+        { id: "616", iso2: "PL", name: "Polska", capital: "Warszawa", region: "wschod" },
+        { id: "620", iso2: "PT", name: "Portugalia", capital: "Lizbona", region: "poludnie" },
+        { id: "643", iso2: "RU", name: "Rosja", capital: "Moskwa", region: "wschod" },
+        { id: "642", iso2: "RO", name: "Rumunia", capital: "Bukareszt", region: "wschod" },
+        { id: "674", iso2: "SM", name: "San Marino", capital: "San Marino", region: "poludnie" },
+        { id: "807", iso2: "MK", name: "Macedonia Północna", capital: "Skopje", region: "poludnie" },
+        { id: "703", iso2: "SK", name: "Słowacja", capital: "Bratysława", region: "wschod" },
+        { id: "705", iso2: "SI", name: "Słowenia", capital: "Lublana", region: "poludnie" },
+        { id: "756", iso2: "CH", name: "Szwajcaria", capital: "Berno", region: "zachod" },
+        { id: "752", iso2: "SE", name: "Szwecja", capital: "Sztokholm", region: "polnoc" },
+        { id: "792", iso2: "TR", name: "Turcja", capital: "Ankara", region: "poludnie" },
+        { id: "804", iso2: "UA", name: "Ukraina", capital: "Kijów", region: "wschod" },
+        { id: "336", iso2: "VA", name: "Watykan", capital: "Watykan", region: "poludnie" },
+        { id: "826", iso2: "GB", name: "Wielka Brytania", capital: "Londyn", region: "zachod" },
+        { id: "348", iso2: "HU", name: "Węgry", capital: "Budapeszt", region: "wschod" },
+        { id: "380", iso2: "IT", name: "Włochy", capital: "Rzym", region: "poludnie" },
+        { id: "688", iso2: "RS", name: "Serbia", capital: "Belgrad", region: "poludnie" },
+        { id: "499", iso2: "ME", name: "Czarnogóra", capital: "Podgorica", region: "poludnie" },
+        { id: "-99", iso2: "XK", name: "Kosowo", capital: "Prisztina", region: "poludnie" }
+      ];
+      const REGIONS = { polnoc: "Północna", zachod: "Zachodnia", poludnie: "Południowa", wschod: "Wschodnia" };
+      const REGION_FULL = { polnoc: "Europa Północna", zachod: "Europa Zachodnia", poludnie: "Europa Południowa", wschod: "Europa Wschodnia" };
+      const REGION_ORDER = ["polnoc", "zachod", "poludnie", "wschod"];
+      const INTERACTIVE = new Set(COUNTRIES.map((c) => c.id));
+      const MAP_EXCLUDE = new Set(["336", "492", "674", "438", "020", "470"]);
+      const byId = Object.fromEntries(COUNTRIES.map((c) => [c.id, c]));
+
+      const TIPS = [
+        "Zacznij od państw, które znasz z wakacji — Włochy, Chorwacja, Grecja.",
+        "Stolica-wyjątek: Szwajcaria ma Berno, a nie Zurych!",
+        "W Holandii stolica to Amsterdam, choć rząd urzęduje w Hadze.",
+        "Ucz się regionami: północ → zachód → południe → wschód.",
+        "3 trafienia bez 2 pomyłek = państwo opanowane automatycznie.",
+        "Stolica Turcji to Ankara — nie Stambuł, choć to on jest słynniejszy.",
+        "Watykan, Monako i San Marino to państwa mniejsze od Twojej szkoły."
+      ];
+
+      const HEAD = {
+        mapa: { t: "Mapa Europy", s: "Najedź, kliknij i poznaj 47 państw oraz ich stolice." },
+        fiszki: { t: "Fiszki", s: "Szybkie powtórki — odwracaj karty i oceniaj się uczciwie." },
+        quiz: { t: "Quiz", s: "Cztery odpowiedzi, jedno trafienie. Buduj serię!" },
+        mapquiz: { t: "Quiz na mapie", s: "Dostajesz nazwę — pokaż palcem, gdzie to jest." },
+        postepy: { t: "Postępy", s: "Twoja droga do mistrzostwa mapy Europy." }
+      };
+
+      /* ---------------- ikony ---------------- */
+      const I = {
+        compass: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 6.2l2.3 5.8-2.3 5.8-2.3-5.8z"/><path d="M12 1.8v1.6M12 20.6v1.6M1.8 12h1.6M20.6 12h1.6"/></svg>',
+        map: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5L3.5 6.3v13.2L9 17.7l6 1.8 5.5-1.8V4.5L15 6.3 9 4.5z"/><path d="M9 4.5v13.2M15 6.3v13.2"/></svg>',
+        cards: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="12.5" height="14" rx="2"/><path d="M8 4.2h11A2 2 0 0 1 21 6.2V17"/><path d="M6.5 11.5h5.5M6.5 14.5h3.5"/></svg>',
+        quiz: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5h16v11.5H10l-6 4.5z"/><path d="M10.3 8.6a1.9 1.9 0 1 1 2.6 1.8c-.55.25-.65.7-.65 1.2"/><circle cx="12.1" cy="13.6" r="0.4" fill="currentColor"/></svg>',
+        pin: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s-7-5.8-7-11.3a7 7 0 0 1 14 0c0 5.5-7 11.3-7 11.3z"/><circle cx="12" cy="10" r="2.4"/></svg>',
+        chart: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 20V11M11 20V4.5M17.5 20v-6.5"/><path d="M3 20.5h18"/></svg>',
+        flame: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8c1.2 3.4 5.2 5.3 5.2 9.9a5.2 5.2 0 0 1-10.4 0c0-1.9.8-3.4 1.9-4.9.4 1.1 1.3 1.8 1.3 1.8C9.6 7 10.8 4.7 12 2.8z"/><path d="M12 21.2a3 3 0 0 1-1.6-5.5c.5 1 1.6 1.2 1.6 1.2s-.2-1.7.8-2.7c.6 1.3 2.2 2.4 2.2 4a3 3 0 0 1-3 3z"/></svg>',
+        check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.8l4.6 4.6L19.5 6.9"/></svg>',
+        x: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+        refresh: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 12a7.4 7.4 0 0 1 12.7-5.1L20 9.3"/><path d="M20 4.5v4.8h-4.8"/><path d="M19.4 12a7.4 7.4 0 0 1-12.7 5.1L4 14.7"/><path d="M4 19.5v-4.8h4.8"/></svg>',
+        search: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.2"/><path d="M16.2 16.2L21 21"/></svg>',
+        eye: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+        eyeoff: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 4.5l15 15"/><path d="M9.9 6.3A9.4 9.4 0 0 1 12 5.8c6 0 9.5 6.2 9.5 6.2a17.6 17.6 0 0 1-3.3 3.8M6 8.4A16.8 16.8 0 0 0 2.5 12S6 18.2 12 18.2c1 0 1.9-.2 2.8-.5"/></svg>',
+        trophy: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5.2a4 4 0 0 1-8 0z"/><path d="M8 5.2H5.2a2.8 2.8 0 0 0 2.9 3.4M16 5.2h2.8a2.8 2.8 0 0 1-2.9 3.4"/><path d="M12 13.4V17M8.5 20.5h7M9.5 17h5v3.5h-5z"/></svg>',
+        arrow: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13.5 5.5L20 12l-6.5 6.5"/></svg>',
+        target: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.7"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/></svg>',
+        shuffle: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3.5L17 17.5h3.5"/><path d="M3 17.5h3.5l2.6-2.7M14 9.2l3-2.7h3.5"/><path d="M18 4.5l3 2.7-3 2.7M18 15l3 2.5-3 2.5"/></svg>',
+        warn: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5L2.8 19.5h18.4z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>'
+      };
+      document.querySelectorAll("[data-icon]").forEach((n) => {
+        n.innerHTML = I[n.dataset.icon] || "";
+      });
+
+      /* ---------------- narzędzia ---------------- */
+      const $ = (s) => document.querySelector(s);
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+      }
+      function flag(iso) {
+        return iso.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+      }
+      function shuffle(a) {
+        const r = [...a];
+        for (let i = r.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [r[i], r[j]] = [r[j], r[i]];
+        }
+        return r;
+      }
+      function uid() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      }
+
+      /* ---------------- sklep (localStorage) ---------------- */
+      const LS_KEY = "kompas-store-v1";
+      let store = { learned: {}, history: [], bestStreak: 0 };
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) store = Object.assign(store, JSON.parse(raw));
+      } catch (e) {}
+      function save() {
+        try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) {}
+        syncProgressUI();
+      }
+      function stat(id) { return store.learned[id] || { c: 0, w: 0, learned: false }; }
+      function statusOf(id) {
+        const s = stat(id);
+        return s.learned ? "learned" : s.c + s.w > 0 ? "try" : "new";
+      }
+      function learnedCount() { return COUNTRIES.filter((c) => stat(c.id).learned).length; }
+      function recordAnswer(id, ok) {
+        const before = stat(id).learned;
+        const s = Object.assign({}, stat(id));
+        if (ok) { s.c += 1; if (s.c >= 3 && s.w < 2) s.learned = true; }
+        else { s.w += 1; }
+        store.learned[id] = s;
+        save();
+        return { learned: s.learned, newly: s.learned && !before };
+      }
+      function bumpStreak(n) { if (n > store.bestStreak) { store.bestStreak = n; save(); } }
+      function addHistory(mode, score, total) {
+        store.history.unshift({ id: uid(), mode: mode, score: score, total: total, date: Date.now() });
+        store.history = store.history.slice(0, 30);
+        save();
+      }
+      function toggleLearned(id) {
+        const s = Object.assign({}, stat(id));
+        s.learned = !s.learned;
+        store.learned[id] = s;
+        save();
+        return s.learned;
+      }
+      function resetAll() {
+        store = { learned: {}, history: [], bestStreak: 0 };
+        save();
+      }
+
+      /* ---------------- toasty ---------------- */
+      function toast(msg, kind) {
+        kind = kind || "info";
+        const color = kind === "ok" ? "#3ecf8e" : kind === "warn" ? "#f26d6d" : "#f6b94b";
+        const icon = kind === "ok" ? I.check : kind === "warn" ? I.warn : I.compass;
+        const t = document.createElement("div");
+        t.className = "toast";
+        t.innerHTML = '<span style="color:' + color + '; display:inline-flex;">' + icon + "</span><span>" + esc(msg) + "</span>";
+        $("#toasts").appendChild(t);
+        setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 260); }, 2600);
+      }
+
+      /* ---------------- nawigacja ---------------- */
+      const NAV = [
+        { mode: "mapa", label: "Mapa Europy", icon: "map" },
+        { mode: "fiszki", label: "Fiszki", icon: "cards" },
+        { mode: "quiz", label: "Quiz", icon: "quiz" },
+        { mode: "mapquiz", label: "Quiz na mapie", icon: "pin" },
+        { mode: "postepy", label: "Postępy", icon: "chart" }
+      ];
+      let view = "mapa";
+
+      function buildNav() {
+        $("#sideNav").innerHTML = NAV.map((n) =>
+          '<button class="nav-item" data-act="nav" data-mode="' + n.mode + '">' + I[n.icon] +
+          "<span>" + n.label + "</span>" +
+          (n.mode === "mapa" ? '<span id="sideNavCount" style="margin-left:auto; font-size:11px; font-weight:700; color:var(--faint);"></span>' : "") +
+          "</button>"
+        ).join("");
+        $("#mNav").innerHTML = NAV.map((n) =>
+          '<button class="nav-chip" data-act="nav" data-mode="' + n.mode + '">' + I[n.icon] + "<span>" + n.label + "</span></button>"
+        ).join("");
+      }
+
+      function setView(mode) {
+        view = mode;
+        document.querySelectorAll(".view").forEach((v) => v.classList.add("hidden"));
+        const sec = $("#view-" + mode);
+        sec.classList.remove("hidden");
+        sec.classList.remove("animate-view");
+        void sec.offsetWidth;
+        sec.classList.add("animate-view");
+
+        document.querySelectorAll('[data-act="nav"]').forEach((b) => {
+          const on = b.dataset.mode === mode;
+          b.classList.toggle("nav-on", on && b.classList.contains("nav-item"));
+          b.classList.toggle("nav-chip-on", on && b.classList.contains("nav-chip"));
+        });
+        $("#hdrTitle").textContent = HEAD[mode].t;
+        $("#hdrSub").textContent = HEAD[mode].s;
+
+        if (mode === "mapa") renderExplore();
+        else if (mode === "fiszki") renderFc();
+        else if (mode === "quiz") renderQuiz();
+        else if (mode === "mapquiz") renderMq();
+        else if (mode === "postepy") renderProgress();
+        syncProgressUI();
+      }
+
+      function syncProgressUI() {
+        const n = learnedCount();
+        const pct = n / COUNTRIES.length;
+        $("#hdrLearned").textContent = n + "/" + COUNTRIES.length;
+        $("#hdrStreak").textContent = store.bestStreak;
+        $("#hdrRingC").setAttribute("stroke-dashoffset", String(81.68 * (1 - pct)));
+        $("#sideTxt").textContent = n + "/" + COUNTRIES.length;
+        $("#sideBar").style.width = (pct * 100) + "%";
+        const cnt = $("#sideNavCount");
+        if (cnt) cnt.textContent = n + "/" + COUNTRIES.length;
+        if (mapReady) paintMap();
+      }
+
+      /* ============================================================
+         MAPA (d3-geo + topojson z CDN)
+         ============================================================ */
+      const W = 920, H = 690;
+      const NS = "http://www.w3.org/2000/svg";
+      const TOPO_URLS = [
+        "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json",
+        "https://unpkg.com/world-atlas@2/countries-50m.json"
+      ];
+      let mapState = "loading"; // loading | ready | error
+      let mapSvg = null, mapTip = null, markRing = null, capsG = null;
+      const mapNodes = {}; // id -> path/circle
+      const capPos = {};   // id -> [x,y]
+      let mapReady = false;
+
+      function svgEl(tag, attrs, parent) {
+        const n = document.createElementNS(NS, tag);
+        for (const k in attrs) n.setAttribute(k, attrs[k]);
+        if (parent) parent.appendChild(n);
+        return n;
+      }
+
+      function makeProjection() {
+        const clip = {
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [[[-25, 34], [45, 34], [45, 71.5], [-25, 71.5], [-25, 34]]] }
+        };
+        const p0 = d3.geoMercator().clipExtent([[0, 0], [W, H]]).scale(1).translate([0, 0]);
+        const c0 = p0(d3.geoCentroid(clip));
+        const c1 = p0(clip.geometry.coordinates[0][0]);
+        const c2 = p0(clip.geometry.coordinates[0][2]);
+        const cx = (c0[0] + c1[0] + c2[0]) / 3;
+        const cy = (c0[1] + c1[1] + c2[1]) / 3;
+        return d3.geoMercator()
+          .clipExtent([[0, 0], [W, H]])
+          .scale((1 / Math.max(Math.abs(c1[0] - c2[0]), Math.abs(c0[1] - c2[1]))) * Math.min(W, H) * 0.99)
+          .translate([W / 2 - cx, H / 2 - cy]);
+      }
+
+      async function loadTopo() {
+        for (const u of TOPO_URLS) {
+          try {
+            const r = await fetch(u);
+            if (r.ok) return await r.json();
+          } catch (e) {}
+        }
+        throw new Error("topo");
+      }
+
+      async function loadMap() {
+        mapState = "loading";
+        renderMapWrap();
+        try {
+          const topo = await loadTopo();
+          buildMap(topo);
+          mapState = "ready";
+          mapReady = true;
+        } catch (e) {
+          mapState = "error";
+        }
+        renderMapWrap();
+      }
+
+      function buildMap(topo) {
+        const feats = topojson.feature(topo, topo.objects.countries).features;
+        const proj = makeProjection();
+        const path = d3.geoPath(proj);
+
+        mapSvg = svgEl("svg", { viewBox: "0 0 " + W + " " + H, class: "map-svg", role: "img", "aria-label": "Mapa Europy" });
+        mapSvg.style.background = "radial-gradient(900px 620px at 28% 18%, #0e2340, #0a1a2e 62%)";
+
+        const defs = svgEl("defs", {}, mapSvg);
+        const filt = svgEl("filter", { id: "softGlow", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+        svgEl("feDropShadow", { dx: 0, dy: 0, stdDeviation: 7, "flood-color": "#f6b94b", "flood-opacity": 0.45 }, filt);
+
+        svgEl("rect", { x: 0, y: 0, width: W, height: H, fill: "#0a1a2e" }, mapSvg);
+        svgEl("rect", { x: 2.5, y: 2.5, width: W - 5, height: H - 5, fill: "none", rx: 12, class: "sea-outline" }, mapSvg);
+
+        const grat = d3.geoGraticule10 ? d3.geoGraticule10() : d3.geoGraticule().step([10, 10])();
+        svgEl("path", { d: path(grat), class: "graticule" }, mapSvg);
+
+        // kontekst (państwa spoza listy, np. fragmenty Afryki i Azji)
+        const gCtx = svgEl("g", {}, mapSvg);
+        feats.forEach((f) => {
+          if (INTERACTIVE.has(f.id)) return;
+          const b = d3.geoBounds(f);
+          if (b[0][0] > 50 || b[1][0] < -28 || b[0][1] > 73 || b[1][1] < 32) return;
+          const d = path(f);
+          if (d) {
+            const p = svgEl("path", { d: d, class: "ctx", "data-ctx-name": (f.properties && f.properties.name) || "" }, gCtx);
+            p.style.pointerEvents = "none";
+          }
+        });
+
+        // państwa interaktywne
+        const gEu = svgEl("g", {}, mapSvg);
+        const inter = feats.filter((f) => INTERACTIVE.has(f.id));
+        inter.forEach((f) => {
+          const d = path(f);
+          if (!d) return;
+          const p = svgEl("path", { d: d, "data-id": f.id, class: "eu eu-new" }, gEu);
+          mapNodes[f.id] = p;
+          if (f.id === "643") p.style.pointerEvents = "none"; // Rosja: reakcja tylko w oknie Europy
+          const c = path.centroid(f);
+          if (c && isFinite(c[0]) && isFinite(c[1]) && c[0] > -50 && c[0] < W + 50 && c[1] > -50 && c[1] < H + 50) {
+            capPos[f.id] = c;
+          }
+        });
+
+        // kropki mikropaństw
+        const gDots = svgEl("g", {}, mapSvg);
+        COUNTRIES.forEach((c) => {
+          const pos = capPos[c.id];
+          if (!pos || mapNodes[c.id]) return;
+          const dot = svgEl("circle", { cx: pos[0], cy: pos[1], r: 4, "data-id": c.id, class: "eu eu-dot eu-new" }, gDots);
+          mapNodes[c.id] = dot;
+          const ring = svgEl("circle", { cx: pos[0], cy: pos[1], r: 8.5, class: "mark-ring" }, gDots);
+          ring.style.pointerEvents = "none";
+        });
+
+        // stolice
+        capsG = svgEl("g", {}, mapSvg);
+        COUNTRIES.forEach((c) => {
+          const pos = capPos[c.id];
+          if (!pos) return;
+          const g = svgEl("g", { class: "cap", "data-id": c.id }, capsG);
+          svgEl("circle", { cx: pos[0], cy: pos[1], r: 3.2, class: "capdot" }, g);
+          svgEl("circle", { cx: pos[0], cy: pos[1], r: 9, class: "hit" }, g);
+        });
+
+        // pierścień zaznaczenia
+        markRing = svgEl("circle", { r: 11, class: "mark-ring", style: "display:none" }, mapSvg);
+        markRing.style.pointerEvents = "none";
+
+        // kompas
+        const gc = svgEl("g", { transform: "translate(852,64)", opacity: 0.75 }, mapSvg);
+        svgEl("circle", { r: 24, fill: "none", stroke: "#23466f", "stroke-width": 1 }, gc);
+        svgEl("circle", { r: 17, fill: "none", stroke: "#23466f", "stroke-width": 0.6, "stroke-dasharray": "2 4" }, gc);
+        const spin = svgEl("g", { class: "compass-spin" }, gc);
+        svgEl("path", { d: "M0,-13 L4,0 L0,13 L-4,0 Z", fill: "#f6b94b", opacity: 0.9 }, spin);
+        svgEl("path", { d: "M0,-13 L4,0 L-4,0 Z", fill: "#e9f2fb", opacity: 0.85 }, spin);
+        const tx = svgEl("text", { y: -32, "text-anchor": "middle", fill: "#647d9e", "font-size": 12, "font-weight": 800, "font-family": "Bricolage Grotesque, sans-serif" }, gc);
+        tx.textContent = "N";
+
+        // legenda
+        const lg = svgEl("g", { transform: "translate(26,610)" }, mapSvg);
+        const legBg = svgEl("rect", { x: -12, y: -20, width: 210, height: 88, rx: 12, fill: "#0b1b30", opacity: 0.9, stroke: "#1e3554" }, lg);
+        legBg.style.pointerEvents = "none";
+        const legT = svgEl("text", { y: -2, fill: "#647d9e", "font-size": 10, "font-weight": 800, "letter-spacing": "1.5" }, lg);
+        legT.textContent = "TWÓJ POSTĘP";
+        [["nowe", "#2b4b72", 14], ["w trakcie", "#4b7a9e", 36], ["opanowane", "#2f9e77", 58]].forEach((it) => {
+          svgEl("rect", { x: 0, y: it[2], width: 12, height: 12, rx: 3, fill: it[1] }, lg).style.pointerEvents = "none";
+          const t = svgEl("text", { x: 20, y: it[2] + 10, fill: "#94aac6", "font-size": 12, "font-family": "Manrope, sans-serif" }, lg);
+          t.textContent = it[0];
+          t.style.pointerEvents = "none";
+        });
+
+        paintMap();
+      }
+
+      function paintMap() {
+        if (!mapReady) return;
+        for (const id in mapNodes) {
+          const n = mapNodes[id];
+          const base = view === "mapquiz" && mq.phase === "play" ? "eu-q" : "eu-" + statusOf(id);
+          const isSel = view === "mapa" && ex.sel === id;
+          const extra = n.tagName === "circle" && n.classList.contains("eu-dot") ? " eu-dot" : "";
+          n.setAttribute("class", "eu" + extra + " " + base + (isSel ? " eu-sel" : ""));
+        }
+      }
+
+      function applyCaps() {
+        if (!mapSvg) return;
+        mapSvg.classList.toggle("caps-off", !ex.showCaps);
+      }
+
+      function showMark(id) {
+        if (!markRing) return;
+        const pos = capPos[id];
+        if (!pos) { markRing.style.display = "none"; return; }
+        markRing.setAttribute("cx", pos[0]);
+        markRing.setAttribute("cy", pos[1]);
+        markRing.style.display = "block";
+      }
+      function hideMark() { if (markRing) markRing.style.display = "none"; }
+
+      function renderMapWrap() {
+        const wrap = $("#mapwrap");
+        if (mapState === "loading") {
+          wrap.innerHTML =
+            '<div class="map-loading"><div class="spinner"></div>' +
+            '<div><div class="font-display" style="font-weight:700; color:var(--ink);">Rysuję mapę Europy…</div>' +
+            '<div style="font-size:12px; margin-top:4px;">pobieram kontury państw</div></div></div>';
+          return;
+        }
+        if (mapState === "error") {
+          wrap.innerHTML =
+            '<div class="map-error"><span style="color:var(--coral); display:inline-flex;">' + I.warn + "</span>" +
+            '<div><div class="font-display" style="font-weight:700; color:var(--ink);">Mapa nie mogła się załadować</div>' +
+            '<div style="font-size:12px; margin-top:4px; max-width:380px;">Kontury państw pobierane są z internetu. Sprawdź połączenie i spróbuj ponownie.</div></div>' +
+            '<button class="btn btn-amber" data-act="map-retry">' + I.refresh + " Spróbuj ponownie</button></div>";
+          return;
+        }
+        if (!wrap.contains(mapSvg)) {
+          wrap.innerHTML = "";
+          wrap.appendChild(mapSvg);
+          mapTip = document.createElement("div");
+          mapTip.className = "map-tip hidden";
+          wrap.appendChild(mapTip);
+        }
+        paintMap();
+        applyCaps();
+        if (view === "mapa" && ex.sel) showMark(ex.sel); else hideMark();
+      }
+
+      /* -------- zdarzenia mapy (delegacja) -------- */
+      function mapWrapAt(e) {
+        return e.target && e.target.closest ? e.target.closest("[data-id]") : null;
+      }
+      document.addEventListener("pointerover", (e) => {
+        if (!mapTip || mapState !== "ready") return;
+        const wrap = $("#mapwrap");
+        if (!wrap.contains(e.target)) return;
+        const t = mapWrapAt(e);
+        if (!t) return;
+        const id = t.dataset.id;
+        const c = byId[id];
+        if (!c) return;
+        if (view === "mapquiz" || (view === "mapa" && !ex.tooltips)) return;
+        mapTip.innerHTML =
+          '<div style="display:flex; align-items:center; gap:7px; font-weight:800; font-size:13.5px;">' +
+          "<span>" + flag(c.iso2) + "</span>" + esc(c.name) + "</div>" +
+          '<div style="font-size:12px; color:#94aac6; margin-top:3px;">stolica: <b style="color:#f6b94b;">' + esc(c.capital) + "</b></div>";
+        mapTip.classList.remove("hidden");
+      });
+      document.addEventListener("pointermove", (e) => {
+        if (!mapTip || mapTip.classList.contains("hidden")) return;
+        const wrap = $("#mapwrap");
+        const r = wrap.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        mapTip.style.left = Math.min(Math.max(8, x + 14), r.width - 240) + "px";
+        mapTip.style.top = Math.min(Math.max(8, y + 14), r.height - 70) + "px";
+      });
+      document.addEventListener("pointerout", (e) => {
+        if (!mapTip) return;
+        const t = mapWrapAt(e);
+        if (t && (!e.relatedTarget || !t.contains(e.relatedTarget))) mapTip.classList.add("hidden");
+        if (!t) mapTip.classList.add("hidden");
+      });
+
+      /* ============================================================
+         WIDOK: MAPA (eksploracja)
+         ============================================================ */
+      const ex = { q: "", region: "all", sel: null, showCaps: true, tooltips: true };
+
+      function filteredCountries() {
+        const q = ex.q.trim().toLowerCase();
+        return COUNTRIES.filter((c) =>
+          (ex.region === "all" || c.region === ex.region) &&
+          (!q || c.name.toLowerCase().includes(q) || c.capital.toLowerCase().includes(q))
+        ).sort((a, b) => a.name.localeCompare(b.name, "pl"));
+      }
+
+      function renderExplore() {
+        $("#ex-toolbar").innerHTML =
+          '<div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">' +
+          '<div style="position:relative; flex:1; min-width:220px;"><span style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--faint); display:inline-flex;">' + I.search + '</span>' +
+          '<input id="ex-search" class="input" style="padding-left:36px;" placeholder="Szukaj państwa lub stolicy…" value="' + esc(ex.q) + '" autocomplete="off"></div>' +
+          '<div style="display:flex; flex-wrap:wrap; gap:6px;" id="ex-regions"></div>' +
+          '<button class="btn btn-ghost btn-sm" data-act="ex-caps" title="Pokaż/ukryj stolice na mapie">' +
+          (ex.showCaps ? I.eye : I.eyeoff) + " Stolice</button>" +
+          '<button class="btn btn-ghost btn-sm" data-act="ex-tips" title="Podpowiedzi po najechaniu">' +
+          (ex.tooltips ? I.eye : I.eyeoff) + " Podpowiedzi</button>" +
+          "</div>";
+        $("#ex-regions").innerHTML =
+          '<button class="chip' + (ex.region === "all" ? " chip-on" : "") + '" data-act="ex-region" data-r="all">Wszystkie</button>' +
+          REGION_ORDER.map((r) =>
+            '<button class="chip' + (ex.region === r ? " chip-on" : "") + '" data-act="ex-region" data-r="' + r + '">' + REGIONS[r] + "</button>"
+          ).join("");
+
+        // przenieś mapę do tego widoku
+        $("#view-mapa").insertBefore($("#mapwrap"), $("#ex-panels"));
+        renderMapWrap();
+        renderExPanels();
+      }
+
+      function renderExPanels() {
+        const list = filteredCountries();
+        const sel = ex.sel ? byId[ex.sel] : null;
+        let html = '<div style="display:grid; gap:20px; align-items:start;' + (sel ? " grid-template-columns:1fr;" : "") + '">' +
+          '<div style="display:grid; gap:20px; align-items:start;" class="ex-grid">';
+
+        if (sel) {
+          const s = stat(sel.id);
+          const attempts = s.c + s.w;
+          const acc = attempts ? Math.round((s.c / attempts) * 100) : null;
+          html +=
+            '<div class="panel animate-popIn" style="padding:20px;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+            '<div class="lbl">Szczegóły</div>' +
+            '<button class="icon-btn" data-act="ex-clear-sel" title="Zamknij">' + I.x + "</button></div>" +
+            '<div style="display:flex; align-items:center; gap:14px; margin-top:12px;">' +
+            '<span style="font-size:44px; line-height:1;">' + flag(sel.iso2) + "</span>" +
+            "<div><div class=\"font-display\" style=\"font-size:26px; font-weight:800; line-height:1.1;\">" + esc(sel.name) + "</div>" +
+            '<div style="font-size:12px; color:var(--faint); margin-top:3px;">' + REGION_FULL[sel.region] + "</div></div></div>" +
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; padding:12px 14px; border:1px dashed rgba(246,185,75,.35); border-radius:12px; background:rgba(246,185,75,.06);">' +
+            '<div><div class="lbl">Stolica</div>' +
+            '<div class="font-display" style="font-size:20px; font-weight:800; color:#f6b94b; margin-top:2px;">' + esc(sel.capital) + "</div></div>" +
+            '<button class="btn btn-amber btn-sm" data-act="fc-quick" data-id="' + sel.id + '">Fiszki: ' + esc(sel.name) + "</button></div>" +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;">' +
+            '<div style="padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0b1b30;">' +
+            '<div class="lbl">Próby w quizach</div>' +
+            '<div class="font-display" style="font-size:20px; font-weight:800; margin-top:2px;">' + attempts + "</div></div>" +
+            '<div style="padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0b1b30;">' +
+            '<div class="lbl">Skuteczność</div>' +
+            '<div class="font-display" style="font-size:20px; font-weight:800; margin-top:2px; color:' + (acc === null ? "var(--faint)" : acc >= 70 ? "#3ecf8e" : acc >= 40 ? "#f6b94b" : "#f26d6d") + ';">' +
+            (acc === null ? "—" : acc + "%") + "</div></div></div>" +
+            '<button class="btn ' + (s.learned ? "btn-green" : "btn-ghost") + '" style="width:100%; justify-content:center; margin-top:14px;" data-act="ex-learn" data-id="' + sel.id + '">' +
+            (s.learned ? I.check + " Opanowane" : "Oznacz jako opanowane") + "</button></div>";
+        }
+
+        html +=
+          '<div class="panel" style="padding:16px;">' +
+          '<div class="lbl" style="margin-bottom:10px;">Państwa (' + list.length + ")</div>";
+        if (list.length === 0) {
+          html += '<div style="text-align:center; padding:28px 12px; color:var(--faint); font-size:14px;">' +
+            "Brak wyników dla <b style=\"color:var(--ink);\">" + esc(ex.q) + "</b>.<br>" +
+            '<button class="btn btn-ghost btn-sm" style="margin-top:12px;" data-act="ex-clear-q">' + I.x + " Wyczyść wyszukiwanie</button></div>";
+        } else {
+          html += '<div class="nice-scroll" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;">';
+          list.forEach((c) => {
+            const st = statusOf(c.id);
+            const dotColor = st === "learned" ? "#3ecf8e" : st === "try" ? "#f6b94b" : "#31517a";
+            html +=
+              '<button class="row-item' + (ex.sel === c.id ? " row-active" : "") + '" data-act="ex-sel" data-id="' + c.id + '">' +
+              '<span style="font-size:17px; line-height:1;">' + flag(c.iso2) + "</span>" +
+              '<span style="flex:1; min-width:0;"><span style="display:block; font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(c.name) + "</span>" +
+              '<span style="display:block; font-size:11.5px; color:var(--faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(c.capital) + "</span></span>" +
+              '<span style="width:8px; height:8px; border-radius:999px; background:' + dotColor + '; flex-shrink:0;"></span></button>';
+          });
+          html += "</div>";
+        }
+        html += "</div></div></div>";
+        $("#ex-panels").innerHTML = html;
+        const grid = $("#ex-panels .ex-grid");
+        if (sel && window.innerWidth >= 1024) grid.style.gridTemplateColumns = "360px 1fr";
+      }
+
+      function selectCountry(id) {
+        ex.sel = id;
+        showMark(id);
+        paintMap();
+        renderExPanels();
+      }
+
+      /* ============================================================
+         WIDOK: FISZKI
+         ============================================================ */
+      const fc = {
+        phase: "setup", dir: "c2cap", region: "all",
+        queue: [], total: 0, flipped: false, knownFirst: 0, firstMiss: new Set(),
+        quickId: null
+      };
+
+      function fcPool() {
+        if (fc.quickId) return [byId[fc.quickId]];
+        return COUNTRIES.filter((c) => fc.region === "all" || c.region === fc.region);
+      }
+
+      function fcStart() {
+        const ids = shuffle(fcPool().map((c) => c.id));
+        fc.queue = ids; fc.total = ids.length; fc.flipped = false; fc.knownFirst = 0;
+        fc.firstMiss = new Set(); fc.phase = "play";
+        renderFc();
+      }
+
+      function fcFlip() {
+        fc.flipped = !fc.flipped;
+        const inner = $("#fc-inner");
+        if (inner) inner.classList.toggle("flipped", fc.flipped);
+        const b1 = $("#fc-btn-bad"), b2 = $("#fc-btn-good");
+        if (b1) b1.disabled = !fc.flipped;
+        if (b2) b2.disabled = !fc.flipped;
+        const hint = $("#fc-hint");
+        if (hint) hint.classList.toggle("hidden", fc.flipped);
+      }
+
+      function fcGrade(known) {
+        const cur = fc.queue.length ? byId[fc.queue[0]] : null;
+        if (!cur) return;
+        if (known) {
+          if (!fc.firstMiss.has(cur.id)) fc.knownFirst++;
+          fc.queue.shift();
+        } else {
+          fc.firstMiss.add(cur.id);
+          fc.queue.push(fc.queue.shift());
+        }
+        fc.flipped = false;
+        renderFc();
+      }
+
+      function renderFc() {
+        const root = $("#view-fiszki");
+        if (fc.phase === "setup") {
+          const pool = fcPool();
+          root.innerHTML =
+            '<div class="panel animate-popIn" style="max-width:36rem; margin:0 auto; padding:24px;">' +
+            '<div class="lbl">Fiszki · trening</div>' +
+            '<h2 class="font-display" style="font-size:24px; font-weight:800; margin:6px 0 0;">Odwracaj karty, aż wszystko zostanie w głowie</h2>' +
+            '<p style="font-size:14px; color:var(--mut); margin:10px 0 0; line-height:1.6;">' +
+            (fc.quickId
+              ? "Szybka powtórka: <b style=\"color:var(--amber);\">" + esc(byId[fc.quickId].name) + " → " + esc(byId[fc.quickId].capital) + "</b>. Talia ma 1 kartę — kręć nią, aż wejdzie w krew."
+              : "Nieznane karty wracają na koniec kolejki — talia kończy się dopiero, gdy znasz każdą parę.") + "</p>" +
+            (fc.quickId ? '<button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-act="fc-unquick">' + I.x + " Wróć do pełnej talii</button>" : "") +
+            '<div class="lbl" style="margin-top:22px;">Kierunek</div>' +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">' +
+            '<button class="seg' + (fc.dir === "c2cap" ? " seg-on" : "") + '" data-act="fc-dir" data-d="c2cap">Państwo ' + I.arrow + " stolica</button>" +
+            '<button class="seg' + (fc.dir === "cap2c" ? " seg-on" : "") + '" data-act="fc-dir" data-d="cap2c">Stolica ' + I.arrow + " państwo</button></div>" +
+            '<div class="lbl" style="margin-top:18px;">Zakres</div>' +
+            '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
+            '<button class="chip' + (fc.region === "all" ? " chip-on" : "") + '" data-act="fc-region" data-r="all">Wszystkie</button>' +
+            REGION_ORDER.map((r) => '<button class="chip' + (fc.region === r ? " chip-on" : "") + '" data-act="fc-region" data-r="' + r + '">' + REGIONS[r] + "</button>").join("") +
+            "</div>" +
+            '<button class="btn btn-amber" style="width:100%; justify-content:center; margin-top:26px;" data-act="fc-start">' +
+            I.shuffle + " Tasuj i start (" + pool.length + (pool.length === 1 ? " karta)" : " kart)") + "</button></div>";
+          return;
+        }
+        if (fc.phase === "done") {
+          const pct = fc.total ? fc.knownFirst / fc.total : 0;
+          const color = pct >= 0.7 ? "#3ecf8e" : "#f6b94b";
+          const missed = fc.total - fc.knownFirst;
+          root.innerHTML =
+            '<div class="panel animate-popIn" style="max-width:36rem; margin:0 auto; padding:28px; text-align:center;">' +
+            ringHtml(pct, color, 140, 12,
+              '<div class="font-display" style="font-size:28px; font-weight:800;">' + fc.knownFirst + "/" + fc.total + "</div>" +
+              '<div style="font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--faint);">za 1. razem</div>') +
+            '<h2 class="font-display" style="font-size:24px; font-weight:800; margin:18px 0 0;">Talia rozegrana!</h2>' +
+            '<p style="font-size:14px; color:var(--mut); margin:10px 0 0;">' +
+            (missed > 0 ? missed + (missed === 1 ? " karta potrzebowała" : " karty potrzebowały") + " powtórki — to właśnie one są teraz w Twojej głowie." : "Wszystkie karty za pierwszym razem — rewelacja!") + "</p>" +
+            '<div style="display:flex; justify-content:center; gap:8px; margin-top:22px;">' +
+            '<button class="btn btn-amber" data-act="fc-start">' + I.refresh + " Jeszcze raz</button>" +
+            '<button class="btn btn-ghost" data-act="fc-setup">Zmień ustawienia</button></div></div>';
+          return;
+        }
+        // play
+        const cur = byId[fc.queue[0]];
+        const front = fc.dir === "c2cap" ? cur.name : cur.capital;
+        const back = fc.dir === "c2cap" ? cur.capital : cur.name;
+        const solved = fc.total - fc.queue.length;
+        root.innerHTML =
+          '<div style="max-width:36rem; margin:0 auto;" class="animate-view">' +
+          '<div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">' +
+          '<div style="flex:1; height:8px; border-radius:999px; background:#122440; border:1px solid var(--line); overflow:hidden;">' +
+          '<div style="height:100%; background:linear-gradient(90deg,#f6b94b,#3ecf8e); width:' + ((solved / Math.max(1, fc.total)) * 100) + "%; transition:width .5s;\"></div></div>" +
+          '<div style="font-size:12px; font-weight:700; color:var(--mut); white-space:nowrap;">zostało ' + fc.queue.length + " / " + fc.total + "</div>" +
+          '<button class="icon-btn" data-act="fc-setup" title="Przerwij">' + I.x + "</button></div>" +
+          '<div class="flip-card" style="height:300px; cursor:pointer;" data-act="fc-flip" role="button" tabindex="0">' +
+          '<div id="fc-inner" class="flip-inner' + (fc.flipped ? " flipped" : "") + '" style="height:100%;">' +
+          '<div class="flip-face card-face">' +
+          '<div class="lbl">' + (fc.dir === "c2cap" ? "Podaj stolicę" : "Podaj państwo") + "</div>" +
+          '<div style="font-size:52px; line-height:1; margin-top:20px;">' + flag(cur.iso2) + "</div>" +
+          '<div class="font-display" style="font-size:34px; font-weight:800; margin-top:16px; padding:0 24px; text-align:center;">' + esc(front) + "</div>" +
+          (fc.dir === "c2cap" ? '<div style="font-size:11px; text-transform:uppercase; letter-spacing:.16em; color:var(--faint); margin-top:12px;">' + REGION_FULL[cur.region] + "</div>" : "") +
+          '<div style="position:absolute; bottom:16px; font-size:11px; color:var(--faint);">kliknij kartę, aby odwrócić</div></div>' +
+          '<div class="flip-face flip-back card-face card-back">' +
+          '<div class="lbl" style="color:#3ecf8e;">' + (fc.dir === "c2cap" ? "Stolica to" : "To państwo to") + "</div>" +
+          '<div class="font-display" style="font-size:36px; font-weight:800; color:#3ecf8e; margin-top:24px; padding:0 24px; text-align:center;">' + esc(back) + "</div>" +
+          '<div style="font-size:14px; color:var(--mut); margin-top:12px;">' + flag(cur.iso2) + " " + esc(cur.name) + " → " + esc(cur.capital) + "</div></div></div></div>" +
+          '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:20px;">' +
+          '<button id="fc-btn-bad" class="btn btn-coral" style="justify-content:center; font-size:15px;" data-act="fc-bad"' + (fc.flipped ? "" : " disabled") + ">" + I.x + " Nie znam</button>" +
+          '<button id="fc-btn-good" class="btn btn-green" style="justify-content:center; font-size:15px;" data-act="fc-good"' + (fc.flipped ? "" : " disabled") + ">" + I.check + " Znam!</button></div>" +
+          '<p id="fc-hint" class="' + (fc.flipped ? "hidden" : "") + '" style="text-align:center; font-size:12px; color:var(--faint); margin:12px 0 0;">Najpierw odwróć kartę i sprawdź się uczciwie.</p></div>';
+      }
+
+      /* ============================================================
+         WIDOK: QUIZ
+         ============================================================ */
+      const q = {
+        phase: "setup", dir: "c2cap", region: "all", count: 10,
+        questions: [], idx: 0, score: 0, streak: 0, locked: false, wrong: []
+      };
+      let qToken = 0;
+
+      function qBuild() {
+        const pool = COUNTRIES.filter((c) => q.region === "all" || c.region === q.region);
+        const chosen = shuffle(pool).slice(0, Math.min(q.count, pool.length));
+        q.questions = chosen.map((c) => {
+          const others = shuffle(pool.filter((o) => o.id !== c.id));
+          const opts = q.dir === "c2cap"
+            ? shuffle([c.capital, ...others.slice(0, 3).map((o) => o.capital)])
+            : shuffle([c.name, ...others.slice(0, 3).map((o) => o.name)]);
+          return { c, opts, correct: q.dir === "c2cap" ? c.capital : c.name };
+        });
+      }
+
+      function qStart() {
+        qBuild();
+        q.idx = 0; q.score = 0; q.streak = 0; q.wrong = []; q.locked = false; q.phase = "play";
+        renderQuiz();
+      }
+
+      function qChoose(i) {
+        if (q.locked) return;
+        q.locked = true;
+        const cur = q.questions[q.idx];
+        const chosen = cur.opts[i];
+        const good = chosen === cur.correct;
+        const rec = recordAnswer(cur.c.id, good);
+        if (rec.newly) toast(cur.c.name + " — opanowane automatycznie!", "ok");
+        if (good) {
+          q.score++; q.streak++; bumpStreak(q.streak);
+        } else {
+          q.streak = 0;
+          q.wrong.push({ country: cur.c, given: chosen, correct: cur.correct });
+        }
+        renderQuiz();
+        const myToken = ++qToken;
+        setTimeout(() => {
+          if (myToken !== qToken || q.phase !== "play") return;
+          if (q.idx + 1 >= q.questions.length) {
+            addHistory("quiz", q.score, q.questions.length);
+            q.phase = "done";
+            renderQuiz();
+          } else {
+            q.idx++; q.locked = false;
+            renderQuiz();
+          }
+        }, 1250);
+      }
+
+      function renderQuiz() {
+        const root = $("#view-quiz");
+        if (q.phase === "setup") {
+          const pool = COUNTRIES.filter((c) => q.region === "all" || c.region === q.region);
+          root.innerHTML =
+            '<div class="panel animate-popIn" style="max-width:36rem; margin:0 auto; padding:24px;">' +
+            '<div class="lbl">Quiz · wybór odpowiedzi</div>' +
+            '<h2 class="font-display" style="font-size:24px; font-weight:800; margin:6px 0 0;">Sprawdź, co już umiesz</h2>' +
+            '<p style="font-size:14px; color:var(--mut); margin:10px 0 0; line-height:1.6;">Możesz klikać albo używać klawiszy <b style="color:var(--ink);">1–4</b>.</p>' +
+            '<div class="lbl" style="margin-top:22px;">Pytamy o</div>' +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">' +
+            '<button class="seg' + (q.dir === "c2cap" ? " seg-on" : "") + '" data-act="q-dir" data-d="c2cap">stolice</button>' +
+            '<button class="seg' + (q.dir === "cap2c" ? " seg-on" : "") + '" data-act="q-dir" data-d="cap2c">państwa</button></div>' +
+            '<div class="lbl" style="margin-top:18px;">Zakres</div>' +
+            '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">' +
+            '<button class="chip' + (q.region === "all" ? " chip-on" : "") + '" data-act="q-region" data-r="all">Wszystkie</button>' +
+            REGION_ORDER.map((r) => '<button class="chip' + (q.region === r ? " chip-on" : "") + '" data-act="q-region" data-r="' + r + '">' + REGIONS[r] + "</button>").join("") + "</div>" +
+            '<div class="lbl" style="margin-top:18px;">Liczba pytań</div>' +
+            '<div style="display:flex; gap:6px; margin-top:6px;">' +
+            [8, 10, 15].map((n) => '<button class="chip' + (q.count === n ? " chip-on" : "") + '" data-act="q-count" data-n="' + n + '">' + n + "</button>").join("") + "</div>" +
+            '<button class="btn btn-amber" style="width:100%; justify-content:center; margin-top:26px;" data-act="q-start">' +
+            I.target + " Start — " + Math.min(q.count, pool.length) + " pytań</button></div>";
+          return;
+        }
+        if (q.phase === "done") {
+          root.innerHTML = '<div style="max-width:42rem; margin:0 auto;">' +
+            resultHtml(q.score, q.questions.length, q.wrong, "trafione", "q-start") + "</div>";
+          return;
+        }
+        const cur = q.questions[q.idx];
+        const promptText = q.dir === "c2cap" ? cur.c.name : cur.c.capital;
+        const sub = q.dir === "c2cap" ? "Która to stolica?" : "Stolicą którego państwa jest to miasto?";
+        root.innerHTML =
+          '<div style="max-width:42rem; margin:0 auto;">' +
+          '<div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">' +
+          '<div style="flex:1; height:8px; border-radius:999px; background:#122440; border:1px solid var(--line); overflow:hidden;">' +
+          '<div style="height:100%; background:linear-gradient(90deg,#f6b94b,#3ecf8e); width:' + ((q.idx / q.questions.length) * 100) + "%; transition:width .5s;\"></div></div>" +
+          '<div style="font-size:12px; font-weight:700; color:var(--mut); white-space:nowrap;">pytanie ' + (q.idx + 1) + "/" + q.questions.length + "</div>" +
+          (q.streak >= 2 ? '<span class="font-display" style="display:inline-flex; align-items:center; gap:4px; color:var(--amber); font-weight:800;">' + I.flame + " " + q.streak + "</span>" : "") +
+          "</div>" +
+          '<div class="panel animate-popIn" style="padding:24px;">' +
+          '<div style="display:flex; align-items:center; gap:14px;">' +
+          '<span style="font-size:40px; line-height:1;">' + flag(cur.c.iso2) + "</span>" +
+          "<div><div style=\"font-size:12px; color:var(--faint); text-transform:uppercase; letter-spacing:.12em; font-weight:700;\">" + sub + "</div>" +
+          '<div class="font-display" style="font-size:26px; font-weight:800; line-height:1.15; margin-top:3px;">' + esc(promptText) + "</div></div></div>" +
+          '<div style="display:grid; gap:10px; margin-top:20px;">' +
+          cur.opts.map((opt, i) => {
+            let cls = "opt";
+            if (q.locked) {
+              if (opt === cur.correct) cls += " opt-good";
+              else if (i === q.lastPick) cls += " opt-bad";
+              else cls += " opt-dim";
+            }
+            return '<button class="' + cls + '" data-act="q-opt" data-i="' + i + '"' + (q.locked ? " disabled" : "") + ">" +
+              '<span class="opt-letter">' + "ABCD"[i] + "</span><span>" + esc(opt) + "</span>" +
+              (q.locked && opt === cur.correct ? '<span style="margin-left:auto; color:#3ecf8e; display:inline-flex;">' + I.check + "</span>" : "") +
+              (q.locked && i === q.lastPick && opt !== cur.correct ? '<span style="margin-left:auto; color:#f26d6d; display:inline-flex;">' + I.x + "</span>" : "") +
+              "</button>";
+          }).join("") + "</div>" +
+          '<div id="q-msg" style="margin-top:14px; font-size:13.5px; font-weight:600; min-height:20px;">' + qMsg(cur) + "</div></div></div>";
+      }
+
+      function qMsg(cur) {
+        if (!q.locked) return '<span style="color:var(--faint); font-weight:500;">Wybierz odpowiedź — klawisze 1–4 też działają.</span>';
+        const good = cur.opts[q.lastPick] === cur.correct;
+        return good
+          ? '<span style="color:#3ecf8e;">' + I.check + " Dobrze!" + (q.streak >= 2 ? " Seria: " + q.streak + "!" : "") + "</span>"
+          : '<span style="color:#f26d6d;">' + I.x + " Pudło — poprawna odpowiedź: <b>" + esc(cur.correct) + "</b></span>";
+      }
+
+      /* ============================================================
+         WIDOK: QUIZ NA MAPIE
+         ============================================================ */
+      const MQ_ROUNDS = 10;
+      const mq = { phase: "setup", targets: [], idx: 0, score: 0, streak: 0, wrong: [], locked: false, msg: null };
+      let mqToken = 0, mqTimer = null;
+
+      function mqStart() {
+        const pool = COUNTRIES.filter((c) => !MAP_EXCLUDE.has(c.id));
+        mq.targets = shuffle(pool).slice(0, MQ_ROUNDS);
+        mq.idx = 0; mq.score = 0; mq.streak = 0; mq.wrong = []; mq.locked = false; mq.msg = null;
+        mq.phase = "play";
+        renderMq();
+      }
+
+      function mqAdvance(finalScore, finalWrong) {
+        if (mq.idx + 1 >= mq.targets.length) {
+          addHistory("mapa", finalScore, mq.targets.length);
+          mq.phase = "done";
+          renderMq();
+        } else {
+          mq.idx++; mq.locked = false; mq.msg = null;
+          renderMq();
+        }
+      }
+
+      function mqAnswer(clickedId) {
+        if (mq.locked || mq.phase !== "play" || !mq.targets.length) return;
+        const target = mq.targets[mq.idx];
+        mq.locked = true;
+        const myToken = ++mqToken;
+
+        // wyczyść poprzednie efekty
+        for (const id in mapNodes) mapNodes[id].classList.remove("fx-good", "fx-bad", "fx-reveal");
+
+        if (clickedId === target.id) {
+          mapNodes[target.id] && mapNodes[target.id].classList.add("fx-good");
+          mq.streak++; bumpStreak(mq.streak);
+          mq.score++;
+          mq.msg = { kind: "ok", text: "Tak! To " + target.name + "." };
+          const rec = recordAnswer(target.id, true);
+          if (rec.newly) toast(target.name + " — opanowane automatycznie!", "ok");
+          clearTimeout(mqTimer);
+          mqTimer = setTimeout(() => { if (myToken === mqToken) mqAdvance(mq.score, mq.wrong); }, 1300);
+        } else {
+          mapNodes[target.id] && mapNodes[target.id].classList.add("fx-reveal");
+          if (clickedId && mapNodes[clickedId]) mapNodes[clickedId].classList.add("fx-bad");
+          mq.streak = 0;
+          const given = clickedId ? (byId[clickedId] ? byId[clickedId].name : "inne państwo") : "brak odpowiedzi";
+          mq.wrong.push({ country: target, given: given, correct: target.name });
+          recordAnswer(target.id, false);
+          mq.msg = {
+            kind: "bad",
+            text: clickedId
+              ? "To " + given + " — szukaliśmy: " + target.name + "."
+              : "Szukaliśmy: " + target.name + "."
+          };
+          clearTimeout(mqTimer);
+          mqTimer = setTimeout(() => { if (myToken === mqToken) mqAdvance(mq.score, mq.wrong); }, 1900);
+        }
+        renderMqHud();
+      }
+
+      function renderMq() {
+        const sec = $("#view-mapquiz");
+        sec.appendChild($("#mapwrap"));
+        const oldSetup = $("#mq-setup"); if (oldSetup) oldSetup.remove();
+        const oldDone = $("#mq-done"); if (oldDone) oldDone.remove();
+        if (mq.phase === "setup") {
+          $("#mq-hud").innerHTML = "";
+          $("#mapwrap").classList.add("hidden");
+          sec.insertAdjacentHTML("beforeend",
+            '<div id="mq-setup" class="panel animate-popIn" style="max-width:36rem; margin:0 auto; padding:24px;">' +
+            '<div class="lbl">Quiz na mapie · ' + MQ_ROUNDS + " rund</div>" +
+            '<h2 class="font-display" style="font-size:24px; font-weight:800; margin:6px 0 0;">Pokaż mi to na mapie!</h2>' +
+            '<p style="font-size:14px; color:var(--mut); margin:10px 0 0; line-height:1.6;">Dostaniesz nazwę państwa, a Ty klikniesz je na mapie. ' +
+            "Bez podpowiedzi po najechaniu — tylko Ty i Europa. Mikropaństwa (jak Watykan czy Monako) pomijamy, bo są mniejsze niż kropka na mapie.</p>" +
+            '<button class="btn btn-amber" style="width:100%; justify-content:center; margin-top:26px;" data-act="mq-start">' +
+            I.target + " Start — " + MQ_ROUNDS + " państw do znalezienia</button></div>");
+          return;
+        }
+        const setupBox = $("#mq-setup");
+        if (setupBox) setupBox.remove();
+        $("#mapwrap").classList.remove("hidden");
+
+        if (mq.phase === "done") {
+          $("#mq-hud").innerHTML = "";
+          $("#mapwrap").classList.add("hidden");
+          sec.insertAdjacentHTML("beforeend",
+            '<div id="mq-done" style="max-width:42rem; margin:0 auto;">' +
+            resultHtml(mq.score, mq.targets.length, mq.wrong, "na mapie", "mq-start") + "</div>");
+          paintMap();
+          return;
+        }
+        const doneBox = $("#mq-done");
+        if (doneBox) doneBox.remove();
+        renderMqHud();
+        paintMap();
+        renderMapWrap();
+      }
+
+      function renderMqHud() {
+        const target = mq.targets[mq.idx];
+        const msg = mq.msg;
+        const msgCls = msg
+          ? (msg.kind === "ok"
+            ? "border:1px solid rgba(62,207,142,.4); background:rgba(62,207,142,.1); color:#3ecf8e;"
+            : "border:1px solid rgba(242,109,109,.4); background:rgba(242,109,109,.1); color:#f26d6d;")
+          : "border:1px solid var(--line); background:rgba(11,27,48,.6); color:var(--mut);";
+        $("#mq-hud").innerHTML =
+          '<div class="panel" style="padding:16px 20px;">' +
+          '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;">' +
+          "<div><div class=\"lbl\" style=\"margin-bottom:2px;\">Runda " + (mq.idx + 1) + "/" + mq.targets.length + " · znajdź:</div>" +
+          '<div class="font-display" style="font-size:24px; font-weight:800; line-height:1.15; display:flex; align-items:center; gap:10px;">' +
+          '<span style="font-size:24px;">' + flag(target.iso2) + "</span> " + esc(target.name) + "</div></div>" +
+          '<div style="margin-left:auto; display:flex; align-items:center; gap:10px;">' +
+          (mq.streak >= 2 ? '<span class="font-display" style="display:inline-flex; align-items:center; gap:4px; color:var(--amber); font-weight:800;">' + I.flame + " " + mq.streak + "</span>" : "") +
+          '<span class="chip chip-on" style="pointer-events:none;">' + I.pin + " " + mq.score + " pkt</span>" +
+          '<button class="btn btn-ghost btn-sm" data-act="mq-dunno"' + (mq.locked ? " disabled" : "") + ">" + I.x + " Nie wiem</button>" +
+          "</div></div>" +
+          '<div class="animate-popIn" style="border-radius:12px; padding:10px 16px; margin-top:12px; font-size:14px; font-weight:600; ' + msgCls + '">' +
+          (msg
+            ? '<span style="display:inline-flex; align-items:center; gap:8px;">' + (msg.kind === "ok" ? I.check : I.x) + esc(msg.text) + "</span>"
+            : "Kliknij państwo na mapie. Zielony błysk = trafienie, czerwony = pudło.") + "</div></div>";
+      }
+
+      /* ============================================================
+         WIDOK: POSTĘPY
+         ============================================================ */
+      function ringHtml(pct, color, size, stroke, inner) {
+        const r = (size - stroke) / 2;
+        const c = 2 * Math.PI * r;
+        return '<div style="position:relative; display:inline-grid; place-items:center; width:' + size + "px; height:" + size + 'px;">' +
+          '<svg width="' + size + '" height="' + size + '" style="transform:rotate(-90deg);">' +
+          '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" stroke="#1e3554" stroke-width="' + stroke + '" fill="none"></circle>' +
+          '<circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" stroke="' + color + '" stroke-width="' + stroke + '" fill="none" stroke-linecap="round" ' +
+          'stroke-dasharray="' + c + '" stroke-dashoffset="' + (c * (1 - Math.max(0, Math.min(1, pct)))) + '" style="transition:stroke-dashoffset .9s cubic-bezier(.2,.7,.2,1);"></circle>' +
+          "</svg>" +
+          '<div style="position:absolute; inset:0; display:grid; place-items:center;">' + inner + "</div></div>";
+      }
+
+      function resultHtml(score, total, wrong, label, retryAct) {
+        const pct = total ? score / total : 0;
+        const verdict = pct >= 0.9 ? "Mistrz kompasu!" : pct >= 0.7 ? "Świetna robota!" : pct >= 0.5 ? "Dobry kurs!" : "Jeszcze trochę praktyki!";
+        const color = pct >= 0.7 ? "#3ecf8e" : pct >= 0.5 ? "#f6b94b" : "#f26d6d";
+        let html =
+          '<div class="panel animate-popIn" style="padding:28px;">' +
+          '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:28px;">' +
+          '<div style="margin:0 auto;">' + ringHtml(pct, color, 150, 13,
+            '<div style="text-align:center;"><div class="font-display" style="font-size:34px; font-weight:800; line-height:1;">' + score + "/" + total + "</div>" +
+            '<div style="font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--faint); margin-top:4px;">' + label + "</div></div>") + "</div>" +
+          '<div style="flex:1; min-width:240px; text-align:center;">' +
+          '<div style="display:flex; align-items:center; justify-content:center; gap:8px; color:#f6b94b;">' + I.trophy +
+          '<span class="font-display" style="font-size:24px; font-weight:800; color:var(--ink);">' + verdict + "</span></div>" +
+          '<p style="font-size:14px; color:var(--mut); margin:10px 0 0; line-height:1.6;">' +
+          (pct >= 0.7 ? "Tak trzymaj — mapa Europy nie ma przed Tobą tajemnic." : "Zajrzyj na mapę, podpatrz trudne państwa i spróbuj jeszcze raz.") + "</p>" +
+          '<div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-top:18px;">' +
+          '<button class="btn btn-amber" data-act="' + retryAct + '">' + I.refresh + " Zagraj ponownie</button>" +
+          '<button class="btn btn-ghost" data-act="nav" data-mode="mapa">' + I.map + " Wróć do mapy</button></div></div></div>";
+        if (wrong.length) {
+          html += '<div style="margin-top:26px;"><div class="lbl" style="margin-bottom:10px;">Do powtórki (' + wrong.length + ")</div>" +
+            '<div style="display:grid; gap:8px; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));">' +
+            wrong.map((w) =>
+              '<div style="display:flex; align-items:center; gap:12px; border-radius:10px; background:rgba(11,27,48,.7); border:1px solid var(--line); padding:10px 14px;">' +
+              '<span style="font-size:18px; line-height:1;">' + flag(w.country.iso2) + "</span>" +
+              '<div style="min-width:0;"><div style="font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(w.country.name) + "</div>" +
+              '<div style="font-size:12px; color:var(--faint);">' +
+              (w.given ? '<span style="color:#f26d6d; text-decoration:line-through;">' + esc(w.given) + "</span> " + I.arrow + " " : "") +
+              '<span style="color:#3ecf8e; font-weight:600;">' + esc(w.correct) + "</span></div></div></div>"
+            ).join("") + "</div></div>";
+        }
+        return html + "</div>";
+      }
+
+      function renderProgress() {
+        const root = $("#view-postepy");
+        const n = learnedCount();
+        const pct = n / COUNTRIES.length;
+        const attempts = COUNTRIES.reduce((a, c) => { const s = stat(c.id); return a + s.c + s.w; }, 0);
+        const quizCount = store.history.length;
+        const avg = quizCount
+          ? Math.round((store.history.reduce((a, r) => a + r.score / Math.max(1, r.total), 0) / quizCount) * 100)
+          : null;
+        const regionStats = REGION_ORDER.map((r) => {
+          const cs = COUNTRIES.filter((c) => c.region === r);
+          return { r: r, total: cs.length, learned: cs.filter((c) => stat(c.id).learned).length };
+        });
+        const sorted = [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name, "pl"));
+
+        root.innerHTML =
+          '<div style="display:grid; gap:20px;">' +
+          '<div style="display:grid; gap:20px; align-items:stretch;" class="pg-head">' +
+          '<div class="panel" style="padding:24px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">' +
+          ringHtml(pct, pct >= 0.66 ? "#3ecf8e" : "#f6b94b", 150, 13,
+            '<div><div class="font-display" style="font-size:32px; font-weight:800; line-height:1;">' + Math.round(pct * 100) + '%</div>' +
+            '<div style="font-size:10px; text-transform:uppercase; letter-spacing:.16em; color:var(--faint); margin-top:4px;">mapy Europy</div></div>') +
+          '<div style="margin-top:12px; font-size:14px; color:var(--mut);"><b style="color:var(--ink);">' + n + "</b> z <b style=\"color:var(--ink);\">" + COUNTRIES.length + "</b> państw opanowanych</div></div>" +
+          '<div class="pg-tiles" style="display:grid; gap:12px;">' +
+          tileHtml(I.trophy, "#3ecf8e", String(n), "opanowane") +
+          tileHtml(I.quiz, "#58b4e8", String(quizCount), "quizy i gry") +
+          tileHtml(I.target, "#f6b94b", avg === null ? "—" : avg + "%", "średni wynik") +
+          tileHtml(I.flame, "#f6b94b", String(store.bestStreak), "najlepsza seria") +
+          '<div class="panel pg-reg" style="padding:16px;">' +
+          '<div class="lbl" style="margin-bottom:12px;">Postęp według regionów</div>' +
+          '<div class="pg-regbars" style="display:grid; gap:12px;">' +
+          regionStats.map((rs) =>
+            "<div><div style=\"display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;\">" +
+            '<span style="font-weight:700;">' + REGIONS[rs.r] + "</span>" +
+            '<span style="color:var(--faint);">' + rs.learned + "/" + rs.total + "</span></div>" +
+            '<div style="height:10px; border-radius:999px; background:#0b1b30; border:1px solid var(--line); overflow:hidden;">' +
+            '<div style="height:100%; width:' + ((rs.learned / rs.total) * 100) + "%; border-radius:999px; transition:width .7s; background:" +
+            (rs.learned === rs.total ? "linear-gradient(90deg,#2f9e77,#3ecf8e)" : "linear-gradient(90deg,#c98f2c,#f6b94b)") + ';"></div></div></div>'
+          ).join("") + "</div></div></div></div></div>" +
+
+          '<div class="panel" style="padding:20px;">' +
+          '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-bottom:16px;">' +
+          '<div class="lbl">Wszystkie państwa — kliknij, by oznaczyć</div>' +
+          '<div style="margin-left:auto; display:flex; gap:16px; font-size:12px; color:var(--mut);">' +
+          '<span style="display:inline-flex; align-items:center; gap:6px;"><i style="width:10px; height:10px; border-radius:4px; background:#31517a; display:inline-block;"></i> nowe</span>' +
+          '<span style="display:inline-flex; align-items:center; gap:6px;"><i style="width:10px; height:10px; border-radius:4px; background:#f6b94b; display:inline-block;"></i> w trakcie</span>' +
+          '<span style="display:inline-flex; align-items:center; gap:6px;"><i style="width:10px; height:10px; border-radius:4px; background:#3ecf8e; display:inline-block;"></i> opanowane</span>' +
+          "</div></div>" +
+          '<div class="pg-countries" style="display:grid; gap:8px;">' +
+          sorted.map((c) => {
+            const st = statusOf(c.id);
+            const bcls = st === "learned"
+              ? "border:1px solid rgba(62,207,142,.35); background:rgba(62,207,142,.08);"
+              : st === "try"
+              ? "border:1px solid rgba(246,185,75,.3); background:rgba(246,185,75,.06);"
+              : "border:1px solid var(--line); background:rgba(11,27,48,.5);";
+            const dot = st === "learned" ? "#3ecf8e" : st === "try" ? "#f6b94b" : "#31517a";
+            return '<button data-act="pg-toggle" data-id="' + c.id + '" style="display:flex; align-items:center; gap:10px; border-radius:10px; padding:8px 12px; cursor:pointer; text-align:left; color:var(--ink); transition:transform .15s; ' + bcls + '">' +
+              '<span style="font-size:18px; line-height:1;">' + flag(c.iso2) + "</span>" +
+              '<span style="flex:1; min-width:0;"><span style="display:block; font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(c.name) + "</span>" +
+              '<span style="display:block; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:' + (st === "learned" ? "#3ecf8e" : "var(--faint)") + ';">' + esc(c.capital) + "</span></span>" +
+              '<span style="width:8px; height:8px; border-radius:999px; background:' + dot + '; flex-shrink:0;"></span></button>';
+          }).join("") + "</div></div>" +
+
+          '<div class="pg-bottom" style="display:grid; gap:20px; align-items:start;">' +
+          '<div class="panel" style="padding:20px;">' +
+          '<div class="lbl" style="margin-bottom:12px;">Ostatnie quizy i gry</div>' +
+          (store.history.length === 0
+            ? '<div style="font-size:14px; color:var(--faint); padding:24px 0; text-align:center;">Jeszcze brak wyników. Zagraj w <b style="color:#f6b94b;">Quiz</b> lub <b style="color:#f6b94b;">Quiz na mapie</b> — wyniki pojawią się tutaj.</div>'
+            : '<div style="display:flex; flex-direction:column; gap:8px;">' +
+              store.history.slice(0, 8).map((r) => {
+                const p = r.score / Math.max(1, r.total);
+                const d = new Date(r.date);
+                const ds = d.toLocaleDateString("pl-PL", { day: "numeric", month: "short" }) + ", " + d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+                return '<div style="display:flex; align-items:center; gap:12px; border-radius:10px; background:rgba(11,27,48,.6); border:1px solid var(--line); padding:10px 14px;">' +
+                  '<span class="chip" style="pointer-events:none;">' + (r.mode === "mapa" ? I.pin + " na mapie" : I.quiz + " quiz") + "</span>" +
+                  '<div style="flex:1; height:8px; border-radius:999px; background:#122440; overflow:hidden;">' +
+                  '<div style="height:100%; width:' + (p * 100) + "%; background:" + (p >= 0.7 ? "#3ecf8e" : p >= 0.5 ? "#f6b94b" : "#f26d6d") + ';"></div></div>' +
+                  '<span class="font-display" style="font-weight:800; font-size:14px; width:48px; text-align:right;">' + r.score + "/" + r.total + "</span>" +
+                  '<span style="font-size:11px; color:var(--faint); white-space:nowrap;">' + ds + "</span></div>";
+              }).join("") + "</div>") +
+          "</div>" +
+          '<div class="panel" style="padding:20px;">' +
+          '<div class="lbl" style="margin-bottom:8px;">Licznik prób</div>' +
+          '<div class="font-display" style="font-size:36px; font-weight:800;">' + attempts + "</div>" +
+          '<p style="font-size:12px; color:var(--faint); margin:6px 0 0; line-height:1.55;">Tyle razy odpowiadałeś w quizach. Każda odpowiedź — dobra czy zła — buduje Twoją mapę w głowie.</p>' +
+          '<div style="height:1px; background:var(--line); margin:16px 0;"></div>' +
+          '<div class="lbl" style="margin-bottom:8px; color:#f26d6d;">Niebezpieczna strefa</div>' +
+          '<button class="btn btn-coral" style="width:100%; justify-content:center;" data-act="reset-open">' + I.refresh + " Wyzeruj cały postęp</button>" +
+          "</div></div></div>";
+
+        // responsywne siatki
+        const head = root.querySelector(".pg-head");
+        if (window.innerWidth >= 1024) head.style.gridTemplateColumns = "auto 1fr";
+        const tiles = root.querySelector(".pg-tiles");
+        tiles.style.gridTemplateColumns = window.innerWidth >= 1280 ? "repeat(4, 1fr)" : window.innerWidth >= 640 ? "repeat(2, 1fr)" : "repeat(2, 1fr)";
+        const reg = root.querySelector(".pg-reg");
+        if (window.innerWidth >= 1280) { reg.style.gridColumn = "1 / -1"; }
+        const bars = root.querySelector(".pg-regbars");
+        if (window.innerWidth >= 640) bars.style.gridTemplateColumns = "1fr 1fr";
+        const pgc = root.querySelector(".pg-countries");
+        pgc.style.gridTemplateColumns = window.innerWidth >= 1280 ? "repeat(4, 1fr)" : window.innerWidth >= 1024 ? "repeat(3, 1fr)" : window.innerWidth >= 640 ? "repeat(2, 1fr)" : "1fr";
+        const bottom = root.querySelector(".pg-bottom");
+        if (window.innerWidth >= 1024) bottom.style.gridTemplateColumns = "1fr 320px";
+      }
+
+      function tileHtml(icon, color, value, label) {
+        return '<div class="panel" style="padding:16px; display:flex; flex-direction:column; justify-content:space-between; min-height:96px;">' +
+          '<span style="color:' + color + '; display:inline-flex;">' + icon + "</span>" +
+          '<div style="margin-top:8px;"><div class="font-display" style="font-size:26px; font-weight:800; line-height:1;">' + value + "</div>" +
+          '<div style="font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--faint); margin-top:4px;">' + label + "</div></div></div>";
+      }
+
+      /* ---------------- modal resetu ---------------- */
+      function openResetModal() {
+        $("#modal").classList.remove("hidden");
+        $("#modal").innerHTML =
+          '<div class="veil" data-act="reset-cancel"></div>' +
+          '<div class="mcard panel">' +
+          '<div style="display:flex; justify-content:space-between; gap:16px; margin-bottom:12px;">' +
+          '<h3 class="font-display" style="font-size:20px; font-weight:800; margin:0;">Na pewno wyzerować?</h3>' +
+          '<button class="icon-btn" data-act="reset-cancel" aria-label="Zamknij">' + I.x + "</button></div>" +
+          '<div style="font-size:14px; color:var(--mut); line-height:1.6;">Znikną wszystkie opanowane państwa, wyniki quizów i rekord serii (' +
+          store.bestStreak + "). Tej operacji nie można cofnąć.</div>" +
+          '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px;">' +
+          '<button class="btn btn-ghost" data-act="reset-cancel">Zostawiam</button>' +
+          '<button class="btn btn-coral" data-act="reset-confirm">' + I.refresh + " Tak, zeruję</button></div></div>";
+      }
+      function closeResetModal() {
+        $("#modal").classList.add("hidden");
+        $("#modal").innerHTML = "";
+      }
+
+      /* ---------------- globalna delegacja zdarzeń ---------------- */
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]");
+        if (!b || b.disabled) return;
+        const act = b.dataset.act;
+        switch (act) {
+          case "nav": {
+            clearTimeout(mqTimer); mqToken++; qToken++;
+            setView(b.dataset.mode);
+            break;
+          }
+          case "map-retry": loadMap(); break;
+
+          case "ex-region": ex.region = b.dataset.r; renderExplore(); break;
+          case "ex-caps": ex.showCaps = !ex.showCaps; applyCaps(); renderExplore(); break;
+          case "ex-tips": ex.tooltips = !ex.tooltips; renderExplore(); break;
+          case "ex-sel": selectCountry(b.dataset.id); break;
+          case "ex-clear-sel": ex.sel = null; hideMark(); paintMap(); renderExPanels(); break;
+          case "ex-clear-q": ex.q = ""; renderExplore(); break;
+          case "ex-learn": {
+            const on = toggleLearned(b.dataset.id);
+            const c = byId[b.dataset.id];
+            toast(c.name + (on ? " — opanowane" : " — wraca do nauki"), on ? "ok" : "info");
+            renderExPanels();
+            break;
+          }
+          case "fc-quick": fc.quickId = b.dataset.id; fc.phase = "setup"; setView("fiszki"); break;
+
+          case "fc-dir": fc.dir = b.dataset.d; renderFc(); break;
+          case "fc-region": fc.region = b.dataset.r; renderFc(); break;
+          case "fc-start": fc.quickId = null; fcStart(); break;
+          case "fc-setup": fc.phase = "setup"; renderFc(); break;
+          case "fc-unquick": fc.quickId = null; renderFc(); break;
+          case "fc-flip": fcFlip(); break;
+          case "fc-bad": fcGrade(false); break;
+          case "fc-good": fcGrade(true); break;
+
+          case "q-dir": q.dir = b.dataset.d; renderQuiz(); break;
+          case "q-region": q.region = b.dataset.r; renderQuiz(); break;
+          case "q-count": q.count = parseInt(b.dataset.n, 10); renderQuiz(); break;
+          case "q-start": qStart(); break;
+          case "q-opt": q.lastPick = parseInt(b.dataset.i, 10); qChoose(q.lastPick); break;
+
+          case "mq-start": mqStart(); break;
+          case "mq-dunno": mqAnswer(null); break;
+
+          case "pg-toggle": {
+            const on = toggleLearned(b.dataset.id);
+            const c = byId[b.dataset.id];
+            toast(c.name + (on ? " — opanowane" : " — wraca do nauki"), on ? "ok" : "info");
+            renderProgress();
+            break;
+          }
+          case "reset-open": openResetModal(); break;
+          case "reset-cancel": closeResetModal(); break;
+          case "reset-confirm":
+            resetAll();
+            closeResetModal();
+            toast("Postęp wyzerowany — nowa przygoda!", "warn");
+            renderProgress();
+            break;
+        }
+      });
+
+      // klik w mapę
+      document.addEventListener("click", (e) => {
+        if (mapState !== "ready") return;
+        const t = e.target.closest ? e.target.closest("[data-id]") : null;
+        if (!t || !$("#mapwrap").contains(t)) return;
+        const id = t.dataset.id;
+        if (view === "mapa") selectCountry(id);
+        else if (view === "mapquiz") mqAnswer(id);
+      });
+
+      // wyszukiwarka
+      document.addEventListener("input", (e) => {
+        if (e.target && e.target.id === "ex-search") {
+          ex.q = e.target.value;
+          renderExPanels();
+        }
+      });
+
+      // klawiatura: 1-4 w quizie, Enter/Spacja na fiszce
+      document.addEventListener("keydown", (e) => {
+        if (view === "quiz" && q.phase === "play" && !q.locked && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const k = parseInt(e.key, 10);
+          if (k >= 1 && k <= 4) {
+            q.lastPick = k - 1;
+            qChoose(k - 1);
+          }
+        }
+        if (view === "fiszki" && fc.phase === "play" && (e.key === "Enter" || e.key === " ")) {
+          if (e.target.closest && e.target.closest(".flip-card")) {
+            e.preventDefault();
+            fcFlip();
+          }
+        }
+      });
+
+      // zmiana rozmiaru okna — przelicz siatki
+      let rsz;
+      window.addEventListener("resize", () => {
+        clearTimeout(rsz);
+        rsz = setTimeout(() => {
+          if (view === "mapa") renderExPanels();
+          else if (view === "postepy") renderProgress();
+        }, 200);
+      });
+
+      /* ---------------- start ---------------- */
+      buildNav();
+      const tipEl = $("#tip");
+      let tipI = 0;
+      tipEl.textContent = TIPS[0];
+      setInterval(() => {
+        tipI = (tipI + 1) % TIPS.length;
+        tipEl.classList.remove("animate-fadeIn");
+        void tipEl.offsetWidth;
+        tipEl.textContent = TIPS[tipI];
+        tipEl.classList.add("animate-fadeIn");
+      }, 8000);
+
+      setView("mapa");
+      loadMap();
+    </script>
+  </body>
+</html>
