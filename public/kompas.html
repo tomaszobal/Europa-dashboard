@@ -959,13 +959,66 @@
         return f;
       }
 
+      /* skaner nawiasów: wycina z tekstu pierwszy zbalansowany obiekt JSON od pozycji start */
+      function scanBalanced(text, start) {
+        if (text[start] !== "{" && text[start] !== "[") return null;
+        let depth = 0, inStr = false, esc = false;
+        for (let i = start; i < text.length; i++) {
+          const ch = text[i];
+          if (inStr) {
+            if (esc) esc = false;
+            else if (ch === "\\") esc = true;
+            else if (ch === '"') inStr = false;
+            continue;
+          }
+          if (ch === '"') inStr = true;
+          else if (ch === "{" || ch === "[") depth++;
+          else if (ch === "}" || ch === "]") {
+            depth--;
+            if (depth === 0) return text.slice(start, i + 1);
+          }
+        }
+        return null;
+      }
+
+      /* szuka osadzonych w HTML-u danych GeoJSON / TopoJSON */
+      function extractJsonFromText(text) {
+        const starts = [];
+        const markers = ['"FeatureCollection"', "'FeatureCollection'", '"Topology"', "'Topology'", '"features"', '"objects"'];
+        for (const m of markers) {
+          let idx = text.indexOf(m);
+          while (idx !== -1 && starts.length < 60) {
+            let s = idx;
+            while (s > 0 && text[s] !== "{" && text[s] !== "[") s--;
+            if (s !== starts[starts.length - 1]) starts.push(s);
+            idx = text.indexOf(m, idx + m.length);
+          }
+        }
+        for (const s of starts) {
+          const slice = scanBalanced(text, s);
+          if (!slice || slice.length < 300) continue;
+          try {
+            const obj = JSON.parse(slice);
+            if (obj && (obj.type === "FeatureCollection" || obj.type === "Topology")) return obj;
+          } catch (e) {}
+        }
+        return null;
+      }
+
       function parseMapData(text) {
         const t = text.trim();
-        if (t.charAt(0) === "<") {
-          throw new Error("To wygląda na plik HTML, a nie dane mapy. Wklej go w czacie — wyciągnę z niego kontury.");
-        }
         let obj;
-        try { obj = JSON.parse(t); } catch (e) { throw new Error("Plik nie jest poprawnym JSON-em."); }
+        if (t.charAt(0) === "<") {
+          obj = extractJsonFromText(t);
+          if (!obj) {
+            throw new Error(
+              "To plik HTML, ale nie znalazłem w nim osadzonych danych mapy (GeoJSON/TopoJSON). " +
+              "Wklej jego zawartość w czacie — wyciągnę kontury ręcznie."
+            );
+          }
+        } else {
+          try { obj = JSON.parse(t); } catch (e) { throw new Error("Plik nie jest poprawnym JSON-em."); }
+        }
         let feats, store;
         if (obj.type === "Topology" && obj.objects) {
           const key = obj.objects.countries ? "countries" : Object.keys(obj.objects)[0];
@@ -1129,7 +1182,7 @@
           (ex.showCaps ? I.eye : I.eyeoff) + " Stolice</button>" +
           '<button class="btn btn-ghost btn-sm" data-act="ex-tips" title="Podpowiedzi po najechaniu">' +
           (ex.tooltips ? I.eye : I.eyeoff) + " Podpowiedzi</button>" +
-          '<button class="btn btn-ghost btn-sm" data-act="ex-import" title="Wczytaj kontury państw z pliku JSON / GeoJSON / TopoJSON. Możesz też upuścić plik myszką wprost na mapę.">' +
+          '<button class="btn btn-ghost btn-sm" data-act="ex-import" title="Wczytaj kontury państw z pliku JSON / GeoJSON / TopoJSON / HTML (dane osadzone wewnątrz). Możesz też upuścić plik myszką wprost na mapę.">' +
           I.cards + " Mapa z pliku</button>" +
           (customMapActive
             ? '<span class="chip" style="pointer-events:none; color:var(--amber); border-color:rgba(246,185,75,.45); background:rgba(246,185,75,.08);">' +
@@ -1895,7 +1948,7 @@
       /* ---------------- wybór i upuszczanie pliku z mapą ---------------- */
       const fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".json,.geojson,.topojson,application/json,application/geo+json";
+      fileInput.accept = ".json,.geojson,.topojson,.html,.htm,application/json,application/geo+json,text/html";
       fileInput.style.display = "none";
       document.body.appendChild(fileInput);
       fileInput.addEventListener("change", () => {
