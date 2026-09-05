@@ -1068,6 +1068,70 @@
         return null;
       }
 
+      /* wyciąga z kodu HTML adresy, spod których plik ładuje dane mapy */
+      function extractDataUrls(text) {
+        const found = [];
+        const seen = {};
+        const push = (u) => {
+          if (u && !seen[u] && found.length < 12) { seen[u] = 1; found.push(u); }
+        };
+        let m;
+        const reJson = /["'](https?:\/\/[^"']+?\.(?:geo|topo)?json[^"']*)["']/gi;
+        while ((m = reJson.exec(text))) push(m[1]);
+        const reFetch = /(?:fetch|open|get|load)\s*\(\s*["'](https?:\/\/[^"']+)["']/gi;
+        while ((m = reFetch.exec(text))) push(m[1]);
+        const reSrc = /(?:src|href|url)\s*[:=]\s*["'](https?:\/\/[^"']+\.(?:geo|topo)?json[^"']*)["']/gi;
+        while ((m = reSrc.exec(text))) push(m[1]);
+        return found;
+      }
+
+      function showInfoModal(title, bodyHtml) {
+        const modal = $("#modal");
+        modal.classList.remove("hidden");
+        modal.innerHTML =
+          '<div class="veil" data-act="info-close"></div>' +
+          '<div class="mcard panel">' +
+          '<div style="display:flex; justify-content:space-between; gap:16px; margin-bottom:12px;">' +
+          '<h3 class="font-display" style="font-size:20px; font-weight:800; margin:0;">' + title + "</h3>" +
+          '<button class="icon-btn" data-act="info-close" aria-label="Zamknij">' + I.x + "</button></div>" +
+          '<div style="font-size:14px; color:var(--mut); line-height:1.6;">' + bodyHtml + "</div>" +
+          '<div style="display:flex; justify-content:flex-end; margin-top:20px;">' +
+          '<button class="btn btn-amber" data-act="info-close">Rozumiem</button></div></div>';
+      }
+
+      function showMapDiagnostics(fileName, text) {
+        const scripts = (text.match(/<script[\s>]/gi) || []).length;
+        const hasLeaflet = /leaflet/i.test(text);
+        const hasD3 = /\bd3\b|geoMercator|geoPath/i.test(text);
+        const svgPaths = (text.match(/<path[\s>]/gi) || []).length;
+        const urls = extractDataUrls(text);
+        let rows = "";
+        const row = (label, val, color) => {
+          rows +=
+            '<div style="display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid rgba(30,53,84,.5);">' +
+            "<span>" + label + '</span><b style="color:' + color + ';">' + val + "</b></div>";
+        };
+        row("Skrypty w pliku", String(scripts), "#e9f2fb");
+        row("Biblioteka Leaflet", hasLeaflet ? "wykryta" : "brak", hasLeaflet ? "#3ecf8e" : "#647d9e");
+        row("Biblioteka D3", hasD3 ? "wykryta" : "brak", hasD3 ? "#3ecf8e" : "#647d9e");
+        row("Ścieżki SVG", String(svgPaths), svgPaths ? "#e9f2fb" : "#647d9e");
+        row("Adresy danych (.json)", String(urls.length), urls.length ? "#f6b94b" : "#647d9e");
+        const urlList = urls.length
+          ? '<div style="margin-top:10px; padding:0 0 8px; font-size:12px; word-break:break-all; color:#94aac6;">' +
+            urls.slice(0, 5).map((u) => "• " + esc(u)).join("<br>") + "</div>"
+          : "";
+        const advice =
+          svgPaths > 20 && !hasLeaflet && !hasD3
+            ? "Wygląda na mapę narysowaną czystym SVG. Taką konstrukcję przenoszę ręcznie — <b style=\"color:var(--amber);\">wklej zawartość pliku w czacie</b>, a wbuduję ją w dashboard na stałe."
+            : "Upewnij się, że ten plik otwarty samodzielnie w przeglądarce pokazuje mapę. Jeśli tak — <b style=\"color:var(--amber);\">wklej jego zawartość w czacie</b>: wyciągnę dane i osadzę je bezpośrednio w dashboardzie, żeby działał bez internetu.";
+        showInfoModal(
+          "Analiza pliku: " + esc(fileName),
+          '<p style="margin:0 0 12px;">Nie znalazłem w środku osadzonych danych mapy, a zewnętrzne źródła nie odpowiedziały. Co wykryłem:</p>' +
+          '<div style="border:1px solid var(--line); border-radius:12px; padding:4px 14px; background:#0b1b30;">' + rows + urlList + "</div>" +
+          '<p style="margin:12px 0 0;">' + advice + "</p>"
+        );
+      }
+
       async function handleMapFile(file) {
         toast("Wczytuję " + file.name + "…", "info");
         let text = null;
@@ -1075,8 +1139,25 @@
           if (file.text) text = await file.text();
           else text = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(file); });
         } catch (e) { toast("Nie udało się odczytać pliku.", "warn"); return; }
-        let parsed;
-        try { parsed = parseMapData(text); } catch (err) { toast(err.message, "warn"); return; }
+        let parsed = null;
+        const isHtml = text.trim().charAt(0) === "<";
+        if (isHtml) {
+          try { parsed = parseMapData(text); } catch (e) { parsed = null; }
+          if (!parsed) {
+            const urls = extractDataUrls(text);
+            for (const u of urls.slice(0, 4)) {
+              toast("Plik wskazuje zewnętrzne dane — pobieram…", "info");
+              try {
+                const data = await fetchWithTimeout(u, 9000);
+                parsed = parseMapData(JSON.stringify(data));
+                if (parsed) break;
+              } catch (e) {}
+            }
+          }
+          if (!parsed) { showMapDiagnostics(file.name, text); return; }
+        } else {
+          try { parsed = parseMapData(text); } catch (err) { toast(err.message, "warn"); return; }
+        }
         parsed.store.name = file.name;
         let persisted = true;
         try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(parsed.store)); }
@@ -1891,6 +1972,7 @@
           }
           case "reset-open": openResetModal(); break;
           case "reset-cancel": closeResetModal(); break;
+          case "info-close": closeResetModal(); break;
           case "reset-confirm":
             resetAll();
             closeResetModal();
